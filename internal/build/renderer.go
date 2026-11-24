@@ -26,7 +26,9 @@ import (
 	"github.com/johnfercher/maroto/v2/pkg/fontrepository"
 	"github.com/johnfercher/maroto/v2/pkg/props"
 	"github.com/pdfcpu/pdfcpu/pkg/api"
+	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/color"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
+	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/types"
 	"golang.org/x/image/font/gofont/gobold"
 	"golang.org/x/image/font/gofont/gobolditalic"
 	"golang.org/x/image/font/gofont/goitalic"
@@ -61,6 +63,8 @@ type renderer struct {
 	bodySize, footerSize                          float64
 	headingAlign                                  align.Type
 	contactCompact                                bool
+	expectedText                                  []string
+	repeatedFooterName                            string
 }
 
 type itemBlock struct {
@@ -112,15 +116,9 @@ func Render(resolved *resolve.Resolved, template *schema.Template) (RenderResult
 	if resolved.Metadata.Subject != "" {
 		builder = builder.WithSubject(resolved.Metadata.Subject, true)
 	}
-	if footerPageEnabled(r.template.Footer.Page) {
-		builder = builder.WithPageNumber(props.PageNumber{
-			Pattern: "Page {current} of {total}", Place: props.RightBottom,
-			Family: r.regular, Style: fontstyle.Normal, Size: r.footerSize, Color: r.textColor,
-		})
-	}
-
 	m := maroto.New(builder.Build())
 	if footerNameEnabled(r.template.Footer.Name) {
+		r.repeatedFooterName = resolved.Header.Name
 		footer := row.New(8).Add(col.New(12).Add(r.text(resolved.Header.Name, r.regular, fontstyle.Normal, r.footerSize, align.Left, 0, 0)))
 		if err := m.RegisterFooter(footer); err != nil {
 			return RenderResult{}, fmt.Errorf("register PDF footer: %w", err)
@@ -166,6 +164,12 @@ func Render(resolved *resolve.Resolved, template *schema.Template) (RenderResult
 	if err != nil {
 		return RenderResult{}, fmt.Errorf("count PDF pages: %w", err)
 	}
+	if footerPageEnabled(r.template.Footer.Page) {
+		pdfBytes, err = addPageNumbers(pdfBytes, pageCount, r.footerSize, r.textColor)
+		if err != nil {
+			return RenderResult{}, fmt.Errorf("add page numbers: %w", err)
+		}
+	}
 	pageLimit := resolved.PageLimit
 	if pageLimit <= 0 {
 		pageLimit = r.template.PageBreaks.PageLimit
@@ -177,6 +181,15 @@ func Render(resolved *resolve.Resolved, template *schema.Template) (RenderResult
 			message += fmt.Sprintf("; overflow reached section %q", lastSection)
 		}
 		warnings = append(warnings, Warning{Code: "page_limit_exceeded", Section: lastSection, Message: message})
+	}
+	expectedText := append([]string{}, r.expectedText...)
+	for i := 1; i < pageCount; i++ {
+		if r.repeatedFooterName != "" {
+			expectedText = append(expectedText, r.repeatedFooterName)
+		}
+	}
+	if err := VerifyVisibleText(pdfBytes, expectedText, resolved.Metadata, r.template.Colors.Background); err != nil {
+		return RenderResult{}, fmt.Errorf("visible-text integrity check failed: %w", err)
 	}
 	return RenderResult{PDF: pdfBytes, PageCount: pageCount, PageLimit: pageLimit, Warnings: warnings}, nil
 }
@@ -225,6 +238,43 @@ func embeddedFonts(r *renderer) ([]entity.CustomFont, error) {
 		return nil, err
 	}
 	return fonts, nil
+}
+
+func addPageNumbers(pdfBytes []byte, pageCount int, fontSize float64, textColor *props.Color) ([]byte, error) {
+	anchor, err := types.ParsePositionAnchor("br")
+	if err != nil {
+		return nil, err
+	}
+	current := pdfBytes
+	for page := 1; page <= pageCount; page++ {
+		watermark := model.DefaultWatermarkConfig()
+		watermark.OnTop = true
+		watermark.Mode = model.WMText
+		watermark.TextString = fmt.Sprintf("Page %d of %d", page, pageCount)
+		watermark.FontName = "Helvetica"
+		watermark.FontSize = int(fontSize)
+		watermark.Rotation = 0
+		watermark.Diagonal = 0
+		watermark.UserRotOrDiagonal = true
+		watermark.ScaleAbs = true
+		watermark.Scale = 1
+		watermark.Pos = anchor
+		watermark.InpUnit = types.POINTS
+		watermark.Dx = -16
+		watermark.Dy = 16
+		watermark.Color = color.SimpleColor{
+			R: float32(textColor.Red) / 255,
+			G: float32(textColor.Green) / 255,
+			B: float32(textColor.Blue) / 255,
+		}
+		watermark.FillColor = watermark.Color
+		buffer := &bytes.Buffer{}
+		if err := api.AddWatermarks(context.Background(), bytes.NewReader(current), buffer, []string{fmt.Sprint(page)}, watermark, model.NewDefaultConfiguration()); err != nil {
+			return nil, err
+		}
+		current = buffer.Bytes()
+	}
+	return current, nil
 }
 
 func (r *renderer) renderHeader(m core.Maroto, resolved *resolve.Resolved) {
@@ -314,9 +364,11 @@ func (r *renderer) sectionBlocks(section string, resolved *resolve.Resolved) []i
 		}
 	case "certifications":
 		for _, cert := range resolved.Certs {
-			name := r.text(cert.Name, r.bold, fontstyle.Bold, r.bodySize, align.Left, 0, 0)
+			var name core.Component
 			if cert.CredentialURL != "" {
 				name = r.link(cert.Name, cert.CredentialURL, r.bodySize)
+			} else {
+				name = r.text(cert.Name, r.bold, fontstyle.Bold, r.bodySize, align.Left, 0, 0)
 			}
 			block := itemBlock{first: []core.Component{
 				name,
@@ -336,9 +388,11 @@ func (r *renderer) experienceBlock(employer resolve.ResolvedEmployer) itemBlock 
 	if employer.Location != "" {
 		name += " — " + employer.Location
 	}
-	company := r.text(name, r.bold, fontstyle.Bold, r.bodySize, align.Left, 0, 0)
+	var company core.Component
 	if employer.Link != "" {
 		company = r.link(name, employer.Link, r.bodySize)
+	} else {
+		company = r.text(name, r.bold, fontstyle.Bold, r.bodySize, align.Left, 0, 0)
 	}
 	block := itemBlock{first: []core.Component{company}}
 	keepRoleWithAccomplishment := boolValue(r.template.PageBreaks.KeepRoleWithAccomp, true)
@@ -383,9 +437,11 @@ func (r *renderer) experienceBlock(employer resolve.ResolvedEmployer) itemBlock 
 }
 
 func (r *renderer) projectBlock(project schema.Project) itemBlock {
-	name := r.text(project.Name, r.bold, fontstyle.Bold, r.bodySize, align.Left, 0, 0)
+	var name core.Component
 	if project.Link != "" {
 		name = r.link(project.Name, project.Link, r.bodySize)
+	} else {
+		name = r.text(project.Name, r.bold, fontstyle.Bold, r.bodySize, align.Left, 0, 0)
 	}
 	block := itemBlock{first: []core.Component{name}}
 	if project.Role != "" {
@@ -417,6 +473,9 @@ func (r *renderer) text(value, family string, style fontstyle.Type, size float64
 }
 
 func (r *renderer) textWithColor(value, family string, style fontstyle.Type, size float64, textAlign align.Type, left, top float64, color *props.Color) core.Component {
+	if strings.TrimSpace(value) != "" {
+		r.expectedText = append(r.expectedText, value)
+	}
 	return text.New(value, props.Text{
 		Family: family, Style: style, Size: size, Align: textAlign,
 		Color: color, Left: left, Top: top, VerticalPadding: r.template.Spacing.Line,
@@ -425,6 +484,9 @@ func (r *renderer) textWithColor(value, family string, style fontstyle.Type, siz
 
 func (r *renderer) link(label, target string, size float64) core.Component {
 	url := target
+	if strings.TrimSpace(label) != "" {
+		r.expectedText = append(r.expectedText, label)
+	}
 	return text.New(label, props.Text{
 		Family: r.regular, Style: fontstyle.Normal, Size: size,
 		Color: r.linkColor, Hyperlink: &url,

@@ -18,6 +18,12 @@ import (
 )
 
 func TestRender_EmbeddedFontsMetadataLinksAndPagination(t *testing.T) {
+	standard, err := resumeTemplate.Standard()
+	if err != nil {
+		t.Fatal(err)
+	}
+	showPageNumbers := false
+	standard.Footer.Page = &showPageNumbers
 	resolved := &resolve.Resolved{
 		Header: schema.Header{
 			Name: "Ada Lovelace", Email: "ada@example.com", GitHub: "https://github.com/ada",
@@ -45,7 +51,7 @@ func TestRender_EmbeddedFontsMetadataLinksAndPagination(t *testing.T) {
 		resolved.Impact[i] = resolve.ResolvedImpact{ID: "impact-" + strings.Repeat("x", i+1), Text: "Improved reliability across production services."}
 	}
 
-	result, err := Render(resolved, nil)
+	result, err := Render(resolved, standard)
 	if err != nil {
 		t.Fatal(err)
 	}
