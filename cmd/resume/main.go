@@ -21,7 +21,6 @@ func commands() map[string]command {
 		"inspect":      {run: stub, usage: "inspect PATH"},
 		"diff":         {run: stub, usage: "diff LEFT RIGHT"},
 		"build":        {run: stub, usage: "build PATH"},
-		"schema":       {run: stub, usage: "schema KIND"},
 		"dependencies": {run: stub, usage: "dependencies PATH"},
 		"version":      {run: runVersion, usage: "version", output: "resume " + version + "\n"},
 	}
@@ -101,7 +100,7 @@ func printUsageTo(w io.Writer) {
 	fmt.Fprintln(w, "Usage: resume <command> [args...]")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Commands:")
-	for _, name := range []string{"validate", "inspect", "diff", "build", "schema", "dependencies", "version"} {
+	for _, name := range []string{"validate", "inspect", "diff", "build", "dependencies", "version"} {
 		fmt.Fprintf(w, "  %-14s %s\n", name, commands()[name].usage)
 	}
 }
