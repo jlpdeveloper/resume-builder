@@ -12,7 +12,7 @@ import (
 )
 
 func TestExecute_StubCommands(t *testing.T) {
-	stubs := []string{"build", "dependencies"}
+	stubs := []string{"build"}
 
 	for _, cmd := range stubs {
 		t.Run(cmd, func(t *testing.T) {
@@ -136,6 +136,33 @@ func TestExecute_InspectJSON(t *testing.T) {
 	}
 	if !report.Valid || report.Target.Company != "Acme" {
 		t.Fatalf("unexpected inspect result: %+v", report)
+	}
+}
+
+func TestExecute_DependenciesJSON(t *testing.T) {
+	profilePath := filepath.Join(t.TempDir(), "profile.yml")
+	if err := os.WriteFile(profilePath, []byte("schema: resume/v1\nkind: profile\nid: p1\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+	os.Args = []string{"resume", "dependencies", profilePath, "--json"}
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	if code := execute(stdout, stderr); code != 0 {
+		t.Fatalf("expected successful dependencies command, got %d: %s", code, stderr.String())
+	}
+	var result struct {
+		Nodes []struct {
+			ID   string `json:"id"`
+			Kind string `json:"kind"`
+		} `json:"nodes"`
+	}
+	if err := json.NewDecoder(stdout).Decode(&result); err != nil {
+		t.Fatalf("decode dependency graph: %v", err)
+	}
+	if len(result.Nodes) != 1 || result.Nodes[0].ID != "p1" || result.Nodes[0].Kind != "profile" {
+		t.Fatalf("unexpected dependency graph: %+v", result)
 	}
 }
 
