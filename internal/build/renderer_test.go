@@ -3,6 +3,7 @@ package build
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -156,6 +157,12 @@ func TestRender_PageBoundariesAndPageLimitWarning(t *testing.T) {
 	}
 
 	pages := extractPages(t, result.PDF)
+	for i, pageText := range pages {
+		wantPageNumber := fmt.Sprintf("Page %d of %d", i+1, result.PageCount)
+		if !strings.Contains(pageText, wantPageNumber) {
+			t.Errorf("page %d is missing visible page number %q: %s", i+1, wantPageNumber, pageText)
+		}
+	}
 	if strings.TrimSpace(pages[len(pages)-1]) == "" {
 		t.Fatal("renderer left an empty trailing page")
 	}

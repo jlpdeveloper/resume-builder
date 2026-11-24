@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	resumeBuild "github.com/jlpdeveloper/resume-builder/internal/build"
 	"github.com/jlpdeveloper/resume-builder/internal/validate"
@@ -157,7 +158,7 @@ func TestExecute_BuildJSON(t *testing.T) {
 	}
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
-	os.Args = []string{"resume", "build", resumePath, "--json"}
+	os.Args = []string{"resume", "build", resumePath, "--timestamp", "2024-01-02T03:04:05Z", "--json"}
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
 	if code := execute(stdout, stderr); code != 0 {
@@ -169,6 +170,18 @@ func TestExecute_BuildJSON(t *testing.T) {
 	}
 	if !result.Success || result.PageCount < 1 || result.PDFPath == "" || result.ManifestPath == "" {
 		t.Fatalf("unexpected build result: %+v", result)
+	}
+	manifestData, err := os.ReadFile(result.ManifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest resumeBuild.Manifest
+	if err := json.Unmarshal(manifestData, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	wantTimestamp := time.Date(2024, time.January, 2, 3, 4, 5, 0, time.UTC)
+	if !manifest.GeneratedAt.Equal(wantTimestamp) {
+		t.Errorf("manifest timestamp = %s, want %s", manifest.GeneratedAt, wantTimestamp)
 	}
 }
 

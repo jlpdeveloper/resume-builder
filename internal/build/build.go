@@ -22,6 +22,7 @@ type Options struct {
 	PDFPath      string
 	ManifestPath string
 	CLIVersion   string
+	Timestamp    time.Time
 }
 
 // FileHash fingerprints one YAML input file.
@@ -33,6 +34,7 @@ type FileHash struct {
 // Fingerprints contains input and output checksums for a build.
 type Fingerprints struct {
 	Inputs       []FileHash `json:"inputs"`
+	InputSHA256  string     `json:"input_sha256"`
 	OutputSHA256 string     `json:"output_sha256"`
 }
 
@@ -71,6 +73,7 @@ type Manifest struct {
 	Target        Target            `json:"target"`
 	Sections      []ManifestSection `json:"sections"`
 	InputHashes   []FileHash        `json:"input_hashes"`
+	InputSHA256   string            `json:"input_sha256"`
 	OutputSHA256  string            `json:"output_sha256"`
 	PDFPath       string            `json:"pdf_path"`
 	PageCount     int               `json:"page_count"`
@@ -141,10 +144,16 @@ func Build(path string, options Options) BuildResult {
 	if version == "" {
 		version = "unknown"
 	}
+	generatedAt := options.Timestamp
+	if generatedAt.IsZero() {
+		generatedAt = time.Now().UTC()
+	} else {
+		generatedAt = generatedAt.UTC()
+	}
 	for _, warning := range validationWarnings(validationResult.Warnings) {
 		result.Warnings = append(result.Warnings, warning)
 	}
-	rendered, err := Render(resolved, nil)
+	rendered, err := renderAt(resolved, nil, generatedAt)
 	if err != nil {
 		result.Error = err.Error()
 		return result
@@ -152,9 +161,10 @@ func Build(path string, options Options) BuildResult {
 	result.PageCount = rendered.PageCount
 	result.Warnings = append(result.Warnings, rendered.Warnings...)
 	result.Fingerprints.Inputs = inputHashes
+	result.Fingerprints.InputSHA256 = inputFingerprint(inputHashes, files.resume.Path, version, files.resume.Envelope.Schema)
 	result.Fingerprints.OutputSHA256 = hashBytes(rendered.PDF)
 
-	manifest := makeManifest(files, resolved, inputHashes, result.Fingerprints.OutputSHA256, pdfPath, rendered.PageCount, version, result.Warnings)
+	manifest := makeManifest(files, resolved, inputHashes, result.Fingerprints.InputSHA256, result.Fingerprints.OutputSHA256, pdfPath, rendered.PageCount, version, generatedAt, result.Warnings)
 	manifestData, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
 		result.Error = fmt.Sprintf("encode manifest: %v", err)
@@ -210,11 +220,11 @@ func writeBuildResult(stdout, stderr io.Writer, result BuildResult, jsonOutput b
 
 func parseBuildArgs(args []string) (string, Options, error) {
 	if len(args) == 0 {
-		return "", Options{}, fmt.Errorf("Usage: resume build PATH [--output PDF] [--manifest JSON]")
+		return "", Options{}, fmt.Errorf("Usage: resume build PATH [--output PDF] [--manifest JSON] [--timestamp RFC3339]")
 	}
 	path := args[0]
 	if strings.HasPrefix(path, "-") || strings.TrimSpace(path) == "" {
-		return "", Options{}, fmt.Errorf("Usage: resume build PATH [--output PDF] [--manifest JSON]")
+		return "", Options{}, fmt.Errorf("Usage: resume build PATH [--output PDF] [--manifest JSON] [--timestamp RFC3339]")
 	}
 	options := Options{}
 	for i := 1; i < len(args); i++ {
@@ -238,6 +248,23 @@ func parseBuildArgs(args []string) (string, Options, error) {
 			options.ManifestPath = args[i]
 		case strings.HasPrefix(argument, "--manifest="):
 			options.ManifestPath = strings.TrimPrefix(argument, "--manifest=")
+		case argument == "--timestamp":
+			if i+1 >= len(args) || strings.TrimSpace(args[i+1]) == "" {
+				return "", Options{}, fmt.Errorf("--timestamp requires an RFC3339 value")
+			}
+			i++
+			timestamp, err := time.Parse(time.RFC3339Nano, args[i])
+			if err != nil {
+				return "", Options{}, fmt.Errorf("invalid --timestamp %q: expected RFC3339 format", args[i])
+			}
+			options.Timestamp = timestamp.UTC()
+		case strings.HasPrefix(argument, "--timestamp="):
+			value := strings.TrimPrefix(argument, "--timestamp=")
+			timestamp, err := time.Parse(time.RFC3339Nano, value)
+			if err != nil {
+				return "", Options{}, fmt.Errorf("invalid --timestamp %q: expected RFC3339 format", value)
+			}
+			options.Timestamp = timestamp.UTC()
 		default:
 			return "", Options{}, fmt.Errorf("unknown build option %q", argument)
 		}
@@ -329,7 +356,26 @@ func hashBytes(data []byte) string {
 	return hex.EncodeToString(hash[:])
 }
 
-func makeManifest(files resumeFiles, resolved *resolve.Resolved, inputs []FileHash, outputHash, pdfPath string, pageCount int, cliVersion string, warnings []Warning) Manifest {
+func inputFingerprint(inputs []FileHash, resumePath, cliVersion, schemaVersion string) string {
+	relativeInputs := make([]FileHash, 0, len(inputs))
+	root := filepath.Dir(resumePath)
+	for _, input := range inputs {
+		path, err := filepath.Rel(root, input.Path)
+		if err != nil {
+			path = input.Path
+		}
+		relativeInputs = append(relativeInputs, FileHash{Path: filepath.ToSlash(path), SHA256: input.SHA256})
+	}
+	sort.Slice(relativeInputs, func(i, j int) bool { return relativeInputs[i].Path < relativeInputs[j].Path })
+	data, _ := json.Marshal(struct {
+		Inputs        []FileHash `json:"inputs"`
+		CLIVersion    string     `json:"cli_version"`
+		SchemaVersion string     `json:"schema_version"`
+	}{Inputs: relativeInputs, CLIVersion: cliVersion, SchemaVersion: schemaVersion})
+	return hashBytes(data)
+}
+
+func makeManifest(files resumeFiles, resolved *resolve.Resolved, inputs []FileHash, inputHash, outputHash, pdfPath string, pageCount int, cliVersion string, generatedAt time.Time, warnings []Warning) Manifest {
 	templateID := "standard"
 	if files.template != nil {
 		templateID = files.template.Envelope.ID
@@ -342,11 +388,12 @@ func makeManifest(files resumeFiles, resolved *resolve.Resolved, inputs []FileHa
 		Target:        Target{Company: resolved.Target.Company, Role: resolved.Target.Role, URL: resolved.Target.URL},
 		Sections:      make([]ManifestSection, 0, len(resolved.Sections)),
 		InputHashes:   inputs,
+		InputSHA256:   inputHash,
 		OutputSHA256:  outputHash,
 		PDFPath:       pdfPath,
 		PageCount:     pageCount,
 		CLIVersion:    cliVersion,
-		GeneratedAt:   time.Now().UTC(),
+		GeneratedAt:   generatedAt,
 		Warnings:      append([]Warning{}, warnings...),
 	}
 	if files.base != nil {

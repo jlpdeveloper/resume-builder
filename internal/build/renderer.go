@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jlpdeveloper/resume-builder/internal/resolve"
 	"github.com/jlpdeveloper/resume-builder/internal/schema"
@@ -26,9 +27,8 @@ import (
 	"github.com/johnfercher/maroto/v2/pkg/fontrepository"
 	"github.com/johnfercher/maroto/v2/pkg/props"
 	"github.com/pdfcpu/pdfcpu/pkg/api"
-	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/color"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
-	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/types"
+	"github.com/phpdave11/gofpdf"
 	"golang.org/x/image/font/gofont/gobold"
 	"golang.org/x/image/font/gofont/gobolditalic"
 	"golang.org/x/image/font/gofont/goitalic"
@@ -36,6 +36,11 @@ import (
 )
 
 const defaultFontFamily = "ResumeSans"
+
+// gofpdf writes font catalogs in map order unless sorting is enabled.
+func init() {
+	gofpdf.SetDefaultCatalogSort(true)
+}
 
 // RenderResult contains the generated PDF and its page count.
 type RenderResult struct {
@@ -74,6 +79,10 @@ type itemBlock struct {
 
 // Render generates a selectable-text PDF using the supplied template settings.
 func Render(resolved *resolve.Resolved, template *schema.Template) (RenderResult, error) {
+	return renderAt(resolved, template, time.Now().UTC())
+}
+
+func renderAt(resolved *resolve.Resolved, template *schema.Template, generatedAt time.Time) (RenderResult, error) {
 	if resolved == nil {
 		return RenderResult{}, fmt.Errorf("resolved resume is required")
 	}
@@ -96,16 +105,30 @@ func Render(resolved *resolve.Resolved, template *schema.Template) (RenderResult
 	}
 	builder := config.NewBuilder().
 		WithCustomFonts(fonts).
-		WithDefaultFont(&props.Font{Family: r.regular, Style: fontstyle.Normal, Size: r.bodySize, Color: r.textColor})
+		WithDefaultFont(&props.Font{Family: r.regular, Style: fontstyle.Normal, Size: r.bodySize, Color: r.textColor}).
+		WithCreationDate(generatedAt)
+	if footerPageEnabled(r.template.Footer.Page) {
+		builder = builder.WithPageNumber(props.PageNumber{
+			Pattern: "Page {current} of {total}", Place: props.RightBottom,
+			Family: "Helvetica", Style: fontstyle.Normal, Size: float64(int(r.footerSize)), Color: r.textColor,
+		})
+	}
 	if r.template.Page.Width > 0 && r.template.Page.Height > 0 {
 		builder = builder.WithDimensions(r.template.Page.Width, r.template.Page.Height)
 	} else {
 		builder = builder.WithPageSize(pagesize.Letter)
 	}
+	bottomMargin := r.template.Margins.Bottom
+	if footerPageEnabled(r.template.Footer.Page) {
+		minimumFooterMargin := r.footerSize * 4 * 25.4 / 72
+		if bottomMargin < minimumFooterMargin {
+			bottomMargin = minimumFooterMargin
+		}
+	}
 	builder = builder.
 		WithTopMargin(r.template.Margins.Top).
 		WithRightMargin(r.template.Margins.Right).
-		WithBottomMargin(r.template.Margins.Bottom).
+		WithBottomMargin(bottomMargin).
 		WithLeftMargin(r.template.Margins.Left)
 	if resolved.Metadata.Title != "" {
 		builder = builder.WithTitle(resolved.Metadata.Title, true)
@@ -164,11 +187,8 @@ func Render(resolved *resolve.Resolved, template *schema.Template) (RenderResult
 	if err != nil {
 		return RenderResult{}, fmt.Errorf("count PDF pages: %w", err)
 	}
-	if footerPageEnabled(r.template.Footer.Page) {
-		pdfBytes, err = addPageNumbers(pdfBytes, pageCount, r.footerSize, r.textColor)
-		if err != nil {
-			return RenderResult{}, fmt.Errorf("add page numbers: %w", err)
-		}
+	if err := setPDFModificationDate(pdfBytes, generatedAt); err != nil {
+		return RenderResult{}, fmt.Errorf("set PDF modification date: %w", err)
 	}
 	pageLimit := resolved.PageLimit
 	if pageLimit <= 0 {
@@ -186,6 +206,11 @@ func Render(resolved *resolve.Resolved, template *schema.Template) (RenderResult
 	for i := 1; i < pageCount; i++ {
 		if r.repeatedFooterName != "" {
 			expectedText = append(expectedText, r.repeatedFooterName)
+		}
+	}
+	if footerPageEnabled(r.template.Footer.Page) {
+		for page := 1; page <= pageCount; page++ {
+			expectedText = append(expectedText, fmt.Sprintf("Page %d of %d", page, pageCount))
 		}
 	}
 	if err := VerifyVisibleText(pdfBytes, expectedText, resolved.Metadata, r.template.Colors.Background); err != nil {
@@ -240,41 +265,42 @@ func embeddedFonts(r *renderer) ([]entity.CustomFont, error) {
 	return fonts, nil
 }
 
-func addPageNumbers(pdfBytes []byte, pageCount int, fontSize float64, textColor *props.Color) ([]byte, error) {
-	anchor, err := types.ParsePositionAnchor("br")
-	if err != nil {
-		return nil, err
+func setPDFModificationDate(pdfBytes []byte, timestamp time.Time) error {
+	index := bytes.LastIndex(pdfBytes, []byte("/ModDate"))
+	if index < 0 {
+		return fmt.Errorf("PDF Info dictionary has no ModDate")
 	}
-	current := pdfBytes
-	for page := 1; page <= pageCount; page++ {
-		watermark := model.DefaultWatermarkConfig()
-		watermark.OnTop = true
-		watermark.Mode = model.WMText
-		watermark.TextString = fmt.Sprintf("Page %d of %d", page, pageCount)
-		watermark.FontName = "Helvetica"
-		watermark.FontSize = int(fontSize)
-		watermark.Rotation = 0
-		watermark.Diagonal = 0
-		watermark.UserRotOrDiagonal = true
-		watermark.ScaleAbs = true
-		watermark.Scale = 1
-		watermark.Pos = anchor
-		watermark.InpUnit = types.POINTS
-		watermark.Dx = -16
-		watermark.Dy = 16
-		watermark.Color = color.SimpleColor{
-			R: float32(textColor.Red) / 255,
-			G: float32(textColor.Green) / 255,
-			B: float32(textColor.Blue) / 255,
-		}
-		watermark.FillColor = watermark.Color
-		buffer := &bytes.Buffer{}
-		if err := api.AddWatermarks(context.Background(), bytes.NewReader(current), buffer, []string{fmt.Sprint(page)}, watermark, model.NewDefaultConfiguration()); err != nil {
-			return nil, err
-		}
-		current = buffer.Bytes()
+	position := index + len("/ModDate")
+	for position < len(pdfBytes) && isPDFWhitespace(pdfBytes[position]) {
+		position++
 	}
-	return current, nil
+	if position >= len(pdfBytes) || pdfBytes[position] != '(' {
+		return fmt.Errorf("PDF Info dictionary has invalid ModDate")
+	}
+	start := position + 1
+	end := bytes.IndexByte(pdfBytes[start:], ')')
+	if end < 0 {
+		return fmt.Errorf("PDF Info dictionary has unterminated ModDate")
+	}
+	end += start
+	date := timestamp.UTC().Format("D:20060102150405")
+	if end-start == len(date)+len("+00'00'") {
+		date += "+00'00'"
+	}
+	if end-start != len(date) {
+		return fmt.Errorf("PDF ModDate has unexpected string length %d", end-start)
+	}
+	copy(pdfBytes[start:end], date)
+	return nil
+}
+
+func isPDFWhitespace(value byte) bool {
+	switch value {
+	case 0, '\t', '\n', '\f', '\r', ' ':
+		return true
+	default:
+		return false
+	}
 }
 
 func (r *renderer) renderHeader(m core.Maroto, resolved *resolve.Resolved) {

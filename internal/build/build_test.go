@@ -1,6 +1,8 @@
 package build
 
 import (
+	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -9,9 +11,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jlpdeveloper/resume-builder/internal/resolve"
 	"github.com/jlpdeveloper/resume-builder/internal/schema"
+	"github.com/pdfcpu/pdfcpu/pkg/api"
+	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
 )
 
 func buildFixture(t *testing.T, impactCount, pageLimit int) (string, string) {
@@ -106,7 +111,7 @@ func TestBuild_WritesPDFAndResolvedManifest(t *testing.T) {
 	if item.ID != "summary-1" || item.SourceKind != "profile" || item.SourceFile != filepath.Join(dir, "profile.yml") {
 		t.Errorf("manifest item omitted its ID or source: %+v", item)
 	}
-	if len(manifest.InputHashes) != 4 || manifest.OutputSHA256 == "" || manifest.PageCount != result.PageCount || manifest.CLIVersion != "0.1.0" || manifest.GeneratedAt.IsZero() {
+	if len(manifest.InputHashes) != 4 || manifest.InputSHA256 == "" || manifest.InputSHA256 != result.Fingerprints.InputSHA256 || manifest.OutputSHA256 == "" || manifest.PageCount != result.PageCount || manifest.CLIVersion != "0.1.0" || manifest.GeneratedAt.IsZero() {
 		t.Errorf("manifest omitted fingerprints or build metadata: %+v", manifest)
 	}
 	for _, input := range manifest.InputHashes {
@@ -125,6 +130,103 @@ func TestBuild_WritesPDFAndResolvedManifest(t *testing.T) {
 	}
 	if len(manifest.Warnings) != 0 {
 		t.Errorf("expected no warnings, got %+v", manifest.Warnings)
+	}
+}
+
+func TestBuild_ReproducibleWithFixedTimestamp(t *testing.T) {
+	resumePath, dir := buildFixture(t, 0, 2)
+	pdfPath := filepath.Join(dir, "resume.pdf")
+	manifestPath := filepath.Join(dir, "resume.manifest.json")
+	generatedAt := time.Date(2024, time.January, 2, 3, 4, 5, 0, time.FixedZone("test", -5*60*60))
+	options := Options{PDFPath: pdfPath, ManifestPath: manifestPath, CLIVersion: "test-version", Timestamp: generatedAt}
+
+	first := Build(resumePath, options)
+	if !first.Success {
+		t.Fatalf("first build failed: %+v", first)
+	}
+	firstPDF, err := os.ReadFile(pdfPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second := Build(resumePath, options)
+	if !second.Success {
+		t.Fatalf("second build failed: %+v", second)
+	}
+	secondPDF, err := os.ReadFile(pdfPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondInfo, err := api.PDFInfo(context.Background(), bytes.NewReader(secondPDF), filepath.Base(pdfPath), nil, false, model.NewDefaultConfiguration())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Fingerprints.InputSHA256 == "" || first.Fingerprints.InputSHA256 != second.Fingerprints.InputSHA256 {
+		t.Fatalf("input fingerprints differ: %q and %q", first.Fingerprints.InputSHA256, second.Fingerprints.InputSHA256)
+	}
+	if first.Fingerprints.OutputSHA256 == "" || first.Fingerprints.OutputSHA256 != second.Fingerprints.OutputSHA256 || !bytes.Equal(firstPDF, secondPDF) {
+		t.Fatalf("fixed-timestamp builds were not byte-for-byte reproducible: %q and %q", first.Fingerprints.OutputSHA256, second.Fingerprints.OutputSHA256)
+	}
+
+	otherResumePath, otherDir := buildFixture(t, 0, 2)
+	other := Build(otherResumePath, Options{
+		PDFPath: filepath.Join(otherDir, "resume.pdf"), ManifestPath: filepath.Join(otherDir, "resume.manifest.json"),
+		CLIVersion: options.CLIVersion, Timestamp: options.Timestamp,
+	})
+	if !other.Success {
+		t.Fatalf("build in a different directory failed: %+v", other)
+	}
+	if first.Fingerprints.InputSHA256 != other.Fingerprints.InputSHA256 {
+		t.Errorf("identical inputs in different directories have different fingerprints: %q and %q", first.Fingerprints.InputSHA256, other.Fingerprints.InputSHA256)
+	}
+	if first.Fingerprints.OutputSHA256 != other.Fingerprints.OutputSHA256 {
+		t.Errorf("identical inputs in different directories have different PDF fingerprints: %q and %q", first.Fingerprints.OutputSHA256, other.Fingerprints.OutputSHA256)
+	}
+
+	manifestData, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest Manifest
+	if err := json.Unmarshal(manifestData, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	if !manifest.GeneratedAt.Equal(generatedAt.UTC()) || manifest.CLIVersion != options.CLIVersion || manifest.SchemaVersion != "resume/v1" || manifest.InputSHA256 != first.Fingerprints.InputSHA256 {
+		t.Fatalf("manifest did not preserve reproducible build metadata: %+v", manifest)
+	}
+	wantPDFTimestamp := generatedAt.UTC().Format("20060102150405")
+	if !strings.Contains(secondInfo.CreationDate, wantPDFTimestamp) {
+		t.Errorf("PDF creation date %q does not match fixed timestamp %s", secondInfo.CreationDate, generatedAt.UTC().Format(time.RFC3339))
+	}
+	if !strings.Contains(secondInfo.ModificationDate, wantPDFTimestamp) {
+		t.Errorf("PDF modification date %q does not match fixed timestamp %s", secondInfo.ModificationDate, generatedAt.UTC().Format(time.RFC3339))
+	}
+}
+
+func TestParseBuildArgs_Timestamp(t *testing.T) {
+	want, err := time.Parse(time.RFC3339, "2024-01-02T03:04:05-05:00")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"resume.yml", "--timestamp", "2024-01-02T03:04:05-05:00"},
+		{"resume.yml", "--timestamp=2024-01-02T03:04:05-05:00"},
+	} {
+		_, options, err := parseBuildArgs(args)
+		if err != nil {
+			t.Fatalf("parseBuildArgs(%q): %v", args, err)
+		}
+		if !options.Timestamp.Equal(want) || options.Timestamp.Location() != time.UTC {
+			t.Errorf("parseBuildArgs(%q) timestamp = %s (%s), want %s in UTC", args, options.Timestamp, options.Timestamp.Location(), want.UTC())
+		}
+	}
+	for _, args := range [][]string{
+		{"resume.yml", "--timestamp"},
+		{"resume.yml", "--timestamp="},
+		{"resume.yml", "--timestamp", "yesterday"},
+	} {
+		if _, _, err := parseBuildArgs(args); err == nil {
+			t.Errorf("parseBuildArgs(%q) unexpectedly succeeded", args)
+		}
 	}
 }
 

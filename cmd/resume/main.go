@@ -27,7 +27,7 @@ func commands() map[string]command {
 		"diff":     {run: diff.Run, usage: "diff LEFT RIGHT"},
 		"build": {run: func(args []string, stdout, stderr io.Writer, jsonOutput bool) int {
 			return build.Run(args, stdout, stderr, jsonOutput, version)
-		}, usage: "build PATH [--output PDF] [--manifest JSON]"},
+		}, usage: "build PATH [--output PDF] [--manifest JSON] [--timestamp RFC3339]"},
 		"dependencies": {run: dependencies.Run, usage: "dependencies PATH"},
 		"version":      {run: runVersion, usage: "version"},
 	}

@@ -1,9 +1,6 @@
 package build
 
 import (
-	"bytes"
-	"context"
-	"io"
 	"strings"
 	"testing"
 
@@ -11,18 +8,17 @@ import (
 	"github.com/jlpdeveloper/resume-builder/internal/schema"
 	resumeTemplate "github.com/jlpdeveloper/resume-builder/internal/template"
 	pdfreader "github.com/ledongthuc/pdf"
-	"github.com/pdfcpu/pdfcpu/pkg/api"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/types"
 )
 
-func TestPageNumberOverlayAddsWatermarkForm(t *testing.T) {
+func TestPageNumberIsVisible(t *testing.T) {
 	standard, err := resumeTemplate.Standard()
 	if err != nil {
 		t.Fatal(err)
 	}
-	showPageNumber := false
+	showPageNumber := true
 	standard.Footer.Page = &showPageNumber
 	resolved := &resolve.Resolved{
 		Header: schema.Header{Name: "Alex Example"},
@@ -32,24 +28,9 @@ func TestPageNumberOverlayAddsWatermarkForm(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rendered.PDF, err = addPageNumbers(rendered.PDF, rendered.PageCount, 8, newRenderer(standard).textColor)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var content bytes.Buffer
-	err = api.ExtractContent(context.Background(), bytes.NewReader(rendered.PDF), nil, func(stream io.Reader, _ int) error {
-		data, err := io.ReadAll(stream)
-		if err != nil {
-			return err
-		}
-		content.Write(data)
-		return nil
-	}, model.NewDefaultConfiguration())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(content.String(), "/Subtype /Watermark") {
-		t.Fatalf("expected page-number watermark form in PDF content stream, got %s", content.String())
+	pages := extractPages(t, rendered.PDF)
+	if len(pages) != 1 || !strings.Contains(pages[0], "Page 1 of 1") {
+		t.Fatalf("expected visible page number in generated PDF, got %v", pages)
 	}
 }
 

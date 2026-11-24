@@ -9,7 +9,7 @@ The CLI reads YAML files describing your career profile, base selections, and ta
 Key principles:
 
 - **Git is the database** — all source data lives as ordinary YAML files.
-- **Same inputs produce equivalent output** — builds are deterministic and reproducible.
+- **Same inputs and timestamp produce identical output** — pass `--timestamp` for reproducible PDF bytes.
 - **Nothing is included implicitly** — content renders only when explicitly selected.
 - **Content and presentation are separate** — templates control layout, never content.
 - **No network access required** — everything runs locally with no external services.
@@ -26,6 +26,9 @@ resume inspect resumes/platform-engineer.yml
 # Build a PDF
 resume build resumes/platform-engineer.yml
 
+# Use a fixed timestamp for byte-for-byte reproducible builds
+resume build resumes/platform-engineer.yml --timestamp 2026-01-02T03:04:05Z
+
 # Compare two resolved resumes
 resume diff resumes/resume-a.yml resumes/resume-b.yml
 ```
@@ -37,7 +40,7 @@ resume diff resumes/resume-a.yml resumes/resume-b.yml
 | `resume validate PATH` | Validate a YAML file and its dependency graph |
 | `resume inspect PATH` | Print the fully resolved résumé content |
 | `resume diff LEFT RIGHT` | Compare two resolved résumé definitions |
-| `resume build PATH` | Generate a PDF and content manifest |
+| `resume build PATH [--timestamp RFC3339]` | Generate a PDF and content manifest |
 | `resume schema KIND` | Print the JSON Schema for a file kind |
 | `resume dependencies PATH` | Print the dependency graph for a file |
 | `resume version` | Print CLI and schema version information |
