@@ -109,6 +109,19 @@ func TestValidate_RejectsInvalidDateAndURL(t *testing.T) {
 	}
 }
 
+func TestValidate_RejectsInvalidTemplateColor(t *testing.T) {
+	path := writeYAML(t, t.TempDir(), "template.yml",
+		"schema: resume/v1", "kind: template", "id: standard",
+		"page:", "  width: 216", "  height: 279",
+		"fonts:", "  regular: ResumeSans", "  bold: ResumeSans",
+		"colors:", "  heading: blue",
+	)
+	result := Validate(path)
+	if result.Valid || len(result.Errors) == 0 || !strings.Contains(result.Errors[0].Message, "invalid heading color") {
+		t.Fatalf("expected template color error, got %+v", result)
+	}
+}
+
 func TestRun_JSONOutput(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "missing.yml")
 	stdout := &bytes.Buffer{}

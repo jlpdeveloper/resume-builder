@@ -9,13 +9,17 @@ import (
 
 	"github.com/jlpdeveloper/resume-builder/internal/resolve"
 	"github.com/jlpdeveloper/resume-builder/internal/schema"
+	resumeTemplate "github.com/jlpdeveloper/resume-builder/internal/template"
 	"github.com/johnfercher/maroto/v2"
 	"github.com/johnfercher/maroto/v2/pkg/components/col"
+	"github.com/johnfercher/maroto/v2/pkg/components/line"
 	"github.com/johnfercher/maroto/v2/pkg/components/row"
 	"github.com/johnfercher/maroto/v2/pkg/components/text"
 	"github.com/johnfercher/maroto/v2/pkg/config"
 	"github.com/johnfercher/maroto/v2/pkg/consts/align"
 	"github.com/johnfercher/maroto/v2/pkg/consts/fontstyle"
+	"github.com/johnfercher/maroto/v2/pkg/consts/linestyle"
+	"github.com/johnfercher/maroto/v2/pkg/consts/orientation"
 	"github.com/johnfercher/maroto/v2/pkg/consts/pagesize"
 	"github.com/johnfercher/maroto/v2/pkg/core"
 	"github.com/johnfercher/maroto/v2/pkg/core/entity"
@@ -38,12 +42,13 @@ type RenderResult struct {
 }
 
 type renderer struct {
-	template                           schema.Template
-	regular, bold, italic, boldItalic  string
-	textColor, headingColor, linkColor *props.Color
-	nameSize, headingSize, roleSize    float64
-	bodySize, footerSize               float64
-	headingAlign                       align.Type
+	template                                      schema.Template
+	regular, bold, italic, boldItalic             string
+	textColor, headingColor, linkColor, ruleColor *props.Color
+	nameSize, contactSize, headingSize, roleSize  float64
+	bodySize, footerSize                          float64
+	headingAlign                                  align.Type
+	contactCompact                                bool
 }
 
 type itemBlock struct {
@@ -58,6 +63,13 @@ func Render(resolved *resolve.Resolved, template *schema.Template) (RenderResult
 	}
 	if template == nil {
 		template = resolved.Template
+		if template == nil {
+			var err error
+			template, err = resumeTemplate.Standard()
+			if err != nil {
+				return RenderResult{}, fmt.Errorf("load standard template: %w", err)
+			}
+		}
 	}
 	r := newRenderer(template)
 
@@ -110,6 +122,12 @@ func Render(resolved *resolve.Resolved, template *schema.Template) (RenderResult
 		}
 		heading := sectionHeading(section, r.template.Headings.Uppercase)
 		first := []core.Component{r.textWithColor(heading, r.bold, fontstyle.Bold, r.headingSize, align.Left, 0, r.template.Spacing.Section, r.headingColor)}
+		if boolValue(r.template.Headings.Rule, false) {
+			first = append(first, line.New(props.Line{
+				Color: r.ruleColor, Style: linestyle.Solid, Thickness: positive(r.template.Headings.RuleSize, 0.2),
+				Orientation: orientation.Horizontal, SizePercent: 100,
+			}))
+		}
 		first = append(first, blocks[0].first...)
 		r.addRow(m, first)
 		r.addRows(m, blocks[0].rest)
@@ -146,14 +164,20 @@ func newRenderer(template *schema.Template) *renderer {
 	r.textColor = parseColor(r.template.Colors.Text, &props.Color{Red: 35, Green: 40, Blue: 48})
 	r.headingColor = parseColor(r.template.Colors.Heading, &props.Color{Red: 31, Green: 78, Blue: 121})
 	r.linkColor = parseColor(r.template.Colors.Link, &props.Color{Red: 31, Green: 78, Blue: 121})
+	r.ruleColor = parseColor(r.template.Colors.Rule, r.headingColor)
 	r.nameSize = positive(r.template.Sizes.Name, 20)
+	r.contactSize = positive(r.template.Sizes.Contact, 8)
 	r.headingSize = positive(r.template.Sizes.Heading, 12)
 	r.roleSize = positive(r.template.Sizes.RoleTitle, 10)
 	r.bodySize = positive(r.template.Sizes.Body, 9.5)
 	r.footerSize = positive(r.template.Sizes.Footer, 8)
+	r.contactCompact = boolValue(r.template.Header.Compact, true)
 	r.headingAlign = align.Left
-	if strings.EqualFold(r.template.Header.Align, "center") {
+	switch strings.ToLower(r.template.Header.Align) {
+	case "center":
 		r.headingAlign = align.Center
+	case "right":
+		r.headingAlign = align.Right
 	}
 	return r
 }
@@ -176,13 +200,13 @@ func (r *renderer) renderHeader(m core.Maroto, resolved *resolve.Resolved) {
 
 	contact := make([]core.Component, 0, 12)
 	addContact := func(label, href string) {
-		if len(contact) > 0 {
-			contact = append(contact, r.text(" | ", r.regular, fontstyle.Normal, r.footerSize, align.Center, 0, 0))
+		if r.contactCompact && len(contact) > 0 {
+			contact = append(contact, r.text(" | ", r.regular, fontstyle.Normal, r.contactSize, align.Center, 0, 0))
 		}
 		if href != "" {
-			contact = append(contact, r.link(label, href, r.footerSize))
+			contact = append(contact, r.link(label, href, r.contactSize))
 		} else if label != "" {
-			contact = append(contact, r.text(label, r.regular, fontstyle.Normal, r.footerSize, align.Center, 0, 0))
+			contact = append(contact, r.text(label, r.regular, fontstyle.Normal, r.contactSize, align.Center, 0, 0))
 		}
 	}
 	addContact(resolved.Header.Phone, "")
@@ -194,7 +218,13 @@ func (r *renderer) renderHeader(m core.Maroto, resolved *resolve.Resolved) {
 		addContact(link.Label, link.URL)
 	}
 	if len(contact) > 0 {
-		m.AddAutoRow(col.New(12).Add(contact...))
+		if r.contactCompact {
+			m.AddAutoRow(col.New(12).Add(contact...))
+		} else {
+			for _, item := range contact {
+				m.AddAutoRow(col.New(12).Add(item))
+			}
+		}
 	}
 
 	targetText := resolved.Target.Company + " — " + resolved.Target.Role
@@ -221,7 +251,7 @@ func (r *renderer) sectionBlocks(section string, resolved *resolve.Resolved) []i
 		}
 	case "impact":
 		for _, impact := range resolved.Impact {
-			blocks = append(blocks, itemBlock{first: []core.Component{r.bullet(impact.Text)}})
+			blocks = append(blocks, itemBlock{first: []core.Component{r.bullet(impact.Text, r.template.Indent.Bullet)}})
 		}
 	case "skills":
 		for _, group := range resolved.Skills {
@@ -287,16 +317,16 @@ func (r *renderer) experienceBlock(employer resolve.ResolvedEmployer) itemBlock 
 		if role.End != "" {
 			roleTitle += "–" + role.End
 		}
-		roleComponent := r.text(roleTitle, r.bold, fontstyle.Bold, r.roleSize, align.Left, r.template.Indent.Role, 0)
+		roleComponent := r.text(roleTitle, r.bold, fontstyle.Bold, r.roleSize, align.Left, r.template.Indent.Role, r.template.Spacing.RoleGap)
 		if roleIndex == 0 {
 			block.first = append(block.first, roleComponent)
 			if len(role.Accomplishments) > 0 {
-				block.first = append(block.first, r.bullet(role.Accomplishments[0]))
+				block.first = append(block.first, r.bullet(role.Accomplishments[0], r.template.Indent.Accomp))
 			}
 		} else {
 			first := []core.Component{roleComponent}
 			if len(role.Accomplishments) > 0 {
-				first = append(first, r.bullet(role.Accomplishments[0]))
+				first = append(first, r.bullet(role.Accomplishments[0], r.template.Indent.Accomp))
 			}
 			block.rest = append(block.rest, first)
 		}
@@ -305,7 +335,7 @@ func (r *renderer) experienceBlock(employer resolve.ResolvedEmployer) itemBlock 
 			start = 1
 		}
 		for _, accomplishment := range role.Accomplishments[start:] {
-			block.rest = append(block.rest, []core.Component{r.bullet(accomplishment)})
+			block.rest = append(block.rest, []core.Component{r.bullet(accomplishment, r.template.Indent.Accomp)})
 		}
 	}
 	return block
@@ -327,7 +357,7 @@ func (r *renderer) projectBlock(project schema.Project) itemBlock {
 		block.rest = append(block.rest, []core.Component{r.text(joinNonEmpty("–", project.Start, project.End), r.regular, fontstyle.Normal, r.bodySize, align.Left, 0, 0)})
 	}
 	for index, accomplishment := range project.Accomplishments {
-		bullet := r.bullet(accomplishment)
+		bullet := r.bullet(accomplishment, r.template.Indent.Accomp)
 		if index == 0 {
 			block.first = append(block.first, bullet)
 		} else {
@@ -337,8 +367,8 @@ func (r *renderer) projectBlock(project schema.Project) itemBlock {
 	return block
 }
 
-func (r *renderer) bullet(value string) core.Component {
-	return r.text("•  "+value, r.regular, fontstyle.Normal, r.bodySize, align.Left, r.template.Indent.Bullet, 0)
+func (r *renderer) bullet(value string, indent float64) core.Component {
+	return r.text("•  "+value, r.regular, fontstyle.Normal, r.bodySize, align.Left, indent, r.template.Spacing.BulletGap)
 }
 
 func (r *renderer) text(value, family string, style fontstyle.Type, size float64, textAlign align.Type, left, top float64) core.Component {
@@ -348,7 +378,7 @@ func (r *renderer) text(value, family string, style fontstyle.Type, size float64
 func (r *renderer) textWithColor(value, family string, style fontstyle.Type, size float64, textAlign align.Type, left, top float64, color *props.Color) core.Component {
 	return text.New(value, props.Text{
 		Family: family, Style: style, Size: size, Align: textAlign,
-		Color: color, Left: left, Top: top,
+		Color: color, Left: left, Top: top, VerticalPadding: r.template.Spacing.Line,
 	})
 }
 
@@ -410,6 +440,13 @@ func positive(value, fallback float64) float64 {
 		return fallback
 	}
 	return value
+}
+
+func boolValue(value *bool, fallback bool) bool {
+	if value == nil {
+		return fallback
+	}
+	return *value
 }
 
 func nonEmpty(value, fallback string) string {
