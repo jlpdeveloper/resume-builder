@@ -18,16 +18,16 @@ Key principles:
 
 ```bash
 # Validate a resume and its dependencies
-resume validate resumes/platform-engineer.yml
+resume validate resumes/example.yml
 
 # Inspect the fully resolved resume content
-resume inspect resumes/platform-engineer.yml
+resume inspect resumes/example.yml
 
 # Build a PDF
-resume build resumes/platform-engineer.yml
+resume build resumes/example.yml
 
 # Use a fixed timestamp for byte-for-byte reproducible builds
-resume build resumes/platform-engineer.yml --timestamp 2026-01-02T03:04:05Z
+resume build resumes/example.yml --timestamp 2026-01-02T03:04:05Z
 
 # Compare two resolved resumes
 resume diff resumes/resume-a.yml resumes/resume-b.yml
@@ -62,8 +62,7 @@ resume/
   bases/
     staff-engineer.yml
   resumes/
-    rapid7-ai-soc.yml
-    platform-engineer.yml
+    example.yml
   templates/
     standard.yml
   output/
