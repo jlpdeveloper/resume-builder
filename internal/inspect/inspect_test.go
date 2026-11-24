@@ -63,6 +63,9 @@ func TestInspect_OrderedSectionsAndSources(t *testing.T) {
 	if len(report.Sections[0].Items) != 1 {
 		t.Fatalf("expected one skill group, got %+v", report.Sections[0].Items)
 	}
+	if report.Sections[1].Items[0].ID != "professional" {
+		t.Errorf("expected resolved summary ID, got %+v", report.Sections[1].Items[0])
+	}
 	skill := report.Sections[0].Items[0]
 	if skill.Source.Kind != "profile" || skill.Source.File == "" || skill.Source.SelectedBy != "resume" || !skill.Source.Inherited {
 		t.Errorf("unexpected skill source: %+v", skill.Source)

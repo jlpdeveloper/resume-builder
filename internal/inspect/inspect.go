@@ -178,6 +178,7 @@ func Inspect(path string) (*Report, error) {
 			if resolved.Summary != nil {
 				section.Items = append(section.Items, Item{
 					Kind:   "summary",
+					ID:     resolved.Summary.ID,
 					Text:   resolved.Summary.Text,
 					Source: sourceForResolved(resolved, resolved.Summary.Source, "resume"),
 				})
@@ -186,6 +187,7 @@ func Inspect(path string) (*Report, error) {
 			for _, impact := range resolved.Impact {
 				section.Items = append(section.Items, Item{
 					Kind:   "impact",
+					ID:     impact.ID,
 					Text:   impact.Text,
 					Source: sourceForResolved(resolved, impact.Source, "resume"),
 				})
