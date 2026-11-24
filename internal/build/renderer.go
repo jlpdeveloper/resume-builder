@@ -47,6 +47,9 @@ type RenderResult struct {
 type Warning struct {
 	Code    string `json:"code"`
 	Section string `json:"section,omitempty"`
+	Field   string `json:"field,omitempty"`
+	Path    string `json:"path,omitempty"`
+	Line    int    `json:"line,omitempty"`
 	Message string `json:"message"`
 }
 

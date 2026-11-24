@@ -8,30 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	resumeBuild "github.com/jlpdeveloper/resume-builder/internal/build"
 	"github.com/jlpdeveloper/resume-builder/internal/validate"
 )
-
-func TestExecute_StubCommands(t *testing.T) {
-	stubs := []string{"build"}
-
-	for _, cmd := range stubs {
-		t.Run(cmd, func(t *testing.T) {
-			oldArgs := os.Args
-			defer func() { os.Args = oldArgs }()
-
-			os.Args = []string{"resume", cmd}
-			stderr := &bytes.Buffer{}
-
-			got := execute(nil, stderr)
-			if got != 1 {
-				t.Errorf("expected exit code 1, got %d", got)
-			}
-			if !strings.Contains(stderr.String(), "not yet implemented") {
-				t.Errorf("expected 'not yet implemented' in stderr, got: %s", stderr.String())
-			}
-		})
-	}
-}
 
 func TestExecute_Version(t *testing.T) {
 	oldArgs := os.Args
@@ -163,6 +142,33 @@ func TestExecute_DependenciesJSON(t *testing.T) {
 	}
 	if len(result.Nodes) != 1 || result.Nodes[0].ID != "p1" || result.Nodes[0].Kind != "profile" {
 		t.Fatalf("unexpected dependency graph: %+v", result)
+	}
+}
+
+func TestExecute_BuildJSON(t *testing.T) {
+	dir := t.TempDir()
+	profilePath := filepath.Join(dir, "profile.yml")
+	resumePath := filepath.Join(dir, "resume.yml")
+	if err := os.WriteFile(profilePath, []byte("schema: resume/v1\nkind: profile\nid: p1\nheader:\n  name: Alex Example\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(resumePath, []byte("schema: resume/v1\nkind: resume\nid: r1\nprofile: profile.yml\ntarget:\n  company: Acme\n  role: Engineer\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+	os.Args = []string{"resume", "build", resumePath, "--json"}
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	if code := execute(stdout, stderr); code != 0 {
+		t.Fatalf("expected successful build, got %d: %s", code, stderr.String())
+	}
+	var result resumeBuild.BuildResult
+	if err := json.NewDecoder(stdout).Decode(&result); err != nil {
+		t.Fatalf("decode build result: %v", err)
+	}
+	if !result.Success || result.PageCount < 1 || result.PDFPath == "" || result.ManifestPath == "" {
+		t.Fatalf("unexpected build result: %+v", result)
 	}
 }
 
