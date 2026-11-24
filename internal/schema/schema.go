@@ -65,15 +65,15 @@ func (e *EnvelopeError) Field() string {
 
 // Profile contains reusable career information.
 type Profile struct {
-	Envelope    Envelope            `yaml:"-"`
-	Header      Header              `yaml:"header"`
-	Employment  []Employer          `yaml:"employment,omitempty"`
-	Skills      []SkillGroup        `yaml:"skills,omitempty"`
-	Projects    []Project           `yaml:"projects,omitempty"`
-	Education   []Education         `yaml:"education,omitempty"`
-	Certs       []Certification     `yaml:"certifications,omitempty"`
-	Summaries   []Summary           `yaml:"summaries,omitempty"`
-	Impact      []ImpactStatement   `yaml:"impact,omitempty"`
+	Envelope   Envelope          `yaml:"-"`
+	Header     Header            `yaml:"header"`
+	Employment []Employer        `yaml:"employment,omitempty"`
+	Skills     []SkillGroup      `yaml:"skills,omitempty"`
+	Projects   []Project         `yaml:"projects,omitempty"`
+	Education  []Education       `yaml:"education,omitempty"`
+	Certs      []Certification   `yaml:"certifications,omitempty"`
+	Summaries  []Summary         `yaml:"summaries,omitempty"`
+	Impact     []ImpactStatement `yaml:"impact,omitempty"`
 }
 
 // Header contains contact information.
@@ -96,11 +96,11 @@ type Link struct {
 
 // Employer represents a company with one or more roles.
 type Employer struct {
-	ID       string  `yaml:"id"`
-	Name     string  `yaml:"name"`
-	Location string  `yaml:"location,omitempty"`
-	Link     string  `yaml:"link,omitempty"`
-	Roles    []Role  `yaml:"roles"`
+	ID       string `yaml:"id"`
+	Name     string `yaml:"name"`
+	Location string `yaml:"location,omitempty"`
+	Link     string `yaml:"link,omitempty"`
+	Roles    []Role `yaml:"roles"`
 }
 
 // Role represents a position within an employer.
@@ -133,12 +133,12 @@ type Project struct {
 
 // Education represents an academic credential.
 type Education struct {
-	ID           string `yaml:"id"`
-	Institution  string `yaml:"institution"`
-	Degree       string `yaml:"degree"`
-	Field        string `yaml:"field,omitempty"`
-	Graduation   string `yaml:"graduation,omitempty"`
-	Honors       string `yaml:"honors,omitempty"`
+	ID          string `yaml:"id"`
+	Institution string `yaml:"institution"`
+	Degree      string `yaml:"degree"`
+	Field       string `yaml:"field,omitempty"`
+	Graduation  string `yaml:"graduation,omitempty"`
+	Honors      string `yaml:"honors,omitempty"`
 }
 
 // Certification represents a professional certification.
@@ -167,17 +167,17 @@ type ImpactStatement struct {
 
 // Base contains selections and settings shared by multiple résumés.
 type Base struct {
-	Envelope    Envelope         `yaml:"-"`
-	Profile     string           `yaml:"profile,omitempty"`
-	Template    string           `yaml:"template,omitempty"`
-	PageLimit   int              `yaml:"pageLimit,omitempty"`
-	Sections    []string         `yaml:"sections,omitempty"`
-	Employment  []Employer       `yaml:"employment,omitempty"`
-	Education   []BaseRef        `yaml:"education,omitempty"`
-	Certs       []BaseRef        `yaml:"certifications,omitempty"`
-	Skills      []SkillGroup     `yaml:"skills,omitempty"`
-	Projects    []BaseRef        `yaml:"projects,omitempty"`
-	Visibility  VisibilityConfig `yaml:"visibility,omitempty"`
+	Envelope   Envelope         `yaml:"-"`
+	Profile    string           `yaml:"profile,omitempty"`
+	Template   string           `yaml:"template,omitempty"`
+	PageLimit  int              `yaml:"pageLimit,omitempty"`
+	Sections   []string         `yaml:"sections,omitempty"`
+	Employment []Employer       `yaml:"employment,omitempty"`
+	Education  []BaseRef        `yaml:"education,omitempty"`
+	Certs      []BaseRef        `yaml:"certifications,omitempty"`
+	Skills     []SkillGroup     `yaml:"skills,omitempty"`
+	Projects   []BaseRef        `yaml:"projects,omitempty"`
+	Visibility VisibilityConfig `yaml:"visibility,omitempty"`
 }
 
 // BaseRef references a profile item by ID.
@@ -195,23 +195,23 @@ type VisibilityConfig struct {
 
 // Resume contains the target-specific résumé definition.
 type Resume struct {
-	Envelope  Envelope  `yaml:"-"`
-	Target    Target    `yaml:"target"`
-	Profile   string    `yaml:"profile,omitempty"`
-	Base      string    `yaml:"base,omitempty"`
-	Template  string    `yaml:"template,omitempty"`
-	Output    string    `yaml:"output,omitempty"`
-	Headline  string    `yaml:"headline,omitempty"`
-	Summary   *SummarySel `yaml:"summary,omitempty"`
-	Impact    []ImpactSel `yaml:"impact,omitempty"`
-	Skills    []SkillSel  `yaml:"skills,omitempty"`
-	Experience []ExpSel   `yaml:"experience,omitempty"`
-	Projects  []Ref      `yaml:"projects,omitempty"`
-	Education []Ref      `yaml:"education,omitempty"`
-	Certs     []Ref      `yaml:"certifications,omitempty"`
-	Sections  []string   `yaml:"sections,omitempty"`
-	PageLimit int        `yaml:"pageLimit,omitempty"`
-	Metadata  PDFMeta    `yaml:"metadata,omitempty"`
+	Envelope   Envelope    `yaml:"-"`
+	Target     Target      `yaml:"target"`
+	Profile    string      `yaml:"profile,omitempty"`
+	Base       string      `yaml:"base,omitempty"`
+	Template   string      `yaml:"template,omitempty"`
+	Output     string      `yaml:"output,omitempty"`
+	Headline   string      `yaml:"headline,omitempty"`
+	Summary    *SummarySel `yaml:"summary,omitempty"`
+	Impact     []ImpactSel `yaml:"impact,omitempty"`
+	Skills     []SkillSel  `yaml:"skills,omitempty"`
+	Experience []ExpSel    `yaml:"experience,omitempty"`
+	Projects   []Ref       `yaml:"projects,omitempty"`
+	Education  []Ref       `yaml:"education,omitempty"`
+	Certs      []Ref       `yaml:"certifications,omitempty"`
+	Sections   []string    `yaml:"sections,omitempty"`
+	PageLimit  int         `yaml:"pageLimit,omitempty"`
+	Metadata   PDFMeta     `yaml:"metadata,omitempty"`
 }
 
 // Target identifies the job this résumé is for.
@@ -242,9 +242,9 @@ type SkillSel struct {
 
 // ExpSel selects experience items by ID.
 type ExpSel struct {
-	Company  string   `yaml:"company"`
-	Roles    []string `yaml:"roles,omitempty"`
-	Bullets  []string `yaml:"bullets,omitempty"`
+	Company string   `yaml:"company"`
+	Roles   []string `yaml:"roles,omitempty"`
+	Bullets []string `yaml:"bullets,omitempty"`
 }
 
 // Ref is a simple reference to a profile item by ID.
@@ -263,17 +263,17 @@ type PDFMeta struct {
 
 // Template contains presentation rules only.
 type Template struct {
-	Envelope   Envelope       `yaml:"-"`
-	Page       PageConfig     `yaml:"page"`
-	Margins    MarginConfig   `yaml:"margins"`
-	Fonts      FontConfig     `yaml:"fonts"`
-	Colors     ColorConfig    `yaml:"colors"`
-	Sizes      SizeConfig     `yaml:"sizes"`
-	Spacing    SpacingConfig  `yaml:"spacing"`
-	Headings   HeadingConfig  `yaml:"headings"`
-	Indent     IndentConfig   `yaml:"indent"`
-	Header     HeaderLayout   `yaml:"headerLayout"`
-	Footer     FooterLayout   `yaml:"footerLayout"`
+	Envelope   Envelope        `yaml:"-"`
+	Page       PageConfig      `yaml:"page"`
+	Margins    MarginConfig    `yaml:"margins"`
+	Fonts      FontConfig      `yaml:"fonts"`
+	Colors     ColorConfig     `yaml:"colors"`
+	Sizes      SizeConfig      `yaml:"sizes"`
+	Spacing    SpacingConfig   `yaml:"spacing"`
+	Headings   HeadingConfig   `yaml:"headings"`
+	Indent     IndentConfig    `yaml:"indent"`
+	Header     HeaderLayout    `yaml:"headerLayout"`
+	Footer     FooterLayout    `yaml:"footerLayout"`
 	PageBreaks PageBreakConfig `yaml:"pageBreaks"`
 }
 
@@ -310,41 +310,41 @@ type ColorConfig struct {
 
 // SizeConfig defines font sizes in points.
 type SizeConfig struct {
-	Name       float64 `yaml:"name"`
-	Contact    float64 `yaml:"contact"`
-	Heading    float64 `yaml:"heading"`
-	RoleTitle  float64 `yaml:"roleTitle"`
-	Body       float64 `yaml:"body"`
-	Footer     float64 `yaml:"footer"`
+	Name      float64 `yaml:"name"`
+	Contact   float64 `yaml:"contact"`
+	Heading   float64 `yaml:"heading"`
+	RoleTitle float64 `yaml:"roleTitle"`
+	Body      float64 `yaml:"body"`
+	Footer    float64 `yaml:"footer"`
 }
 
 // SpacingConfig defines spacing values.
 type SpacingConfig struct {
-	Line       float64 `yaml:"line"`
-	Section    float64 `yaml:"section"`
-	RoleGap    float64 `yaml:"roleGap"`
-	BulletGap  float64 `yaml:"bulletGap"`
+	Line      float64 `yaml:"line"`
+	Section   float64 `yaml:"section"`
+	RoleGap   float64 `yaml:"roleGap"`
+	BulletGap float64 `yaml:"bulletGap"`
 }
 
 // HeadingConfig defines section heading style.
 type HeadingConfig struct {
-	Uppercase *bool  `yaml:"uppercase,omitempty"`
-	LetterSp string  `yaml:"letterSpacing,omitempty"`
-	Rule      *bool  `yaml:"rule,omitempty"`
+	Uppercase *bool   `yaml:"uppercase,omitempty"`
+	LetterSp  string  `yaml:"letterSpacing,omitempty"`
+	Rule      *bool   `yaml:"rule,omitempty"`
 	RuleSize  float64 `yaml:"ruleSize,omitempty"`
 }
 
 // IndentConfig defines indentation values.
 type IndentConfig struct {
-	Bullet    float64 `yaml:"bullet"`
-	Role      float64 `yaml:"role"`
-	Accomp    float64 `yaml:"accomplishment"`
+	Bullet float64 `yaml:"bullet"`
+	Role   float64 `yaml:"role"`
+	Accomp float64 `yaml:"accomplishment"`
 }
 
 // HeaderLayout defines the header section layout.
 type HeaderLayout struct {
-	Align    string `yaml:"align,omitempty"`
-	Compact  *bool  `yaml:"compact,omitempty"`
+	Align   string `yaml:"align,omitempty"`
+	Compact *bool  `yaml:"compact,omitempty"`
 }
 
 // FooterLayout defines the footer layout.
@@ -357,4 +357,5 @@ type FooterLayout struct {
 type PageBreakConfig struct {
 	KeepHeadingWithContent *bool `yaml:"keepHeadingWithContent,omitempty"`
 	KeepRoleWithAccomp     *bool `yaml:"keepRoleWithAccomplishment,omitempty"`
+	PageLimit              int   `yaml:"pageLimit,omitempty"`
 }

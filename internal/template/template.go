@@ -106,6 +106,9 @@ func validateSettings(template *schema.Template) error {
 	if template.Headings.RuleSize < 0 {
 		return fmt.Errorf("heading rule size cannot be negative")
 	}
+	if template.PageBreaks.PageLimit < 0 {
+		return fmt.Errorf("page limit cannot be negative")
+	}
 	if align := strings.ToLower(template.Header.Align); align != "" && align != "left" && align != "center" && align != "right" {
 		return fmt.Errorf("unsupported header alignment %q", template.Header.Align)
 	}

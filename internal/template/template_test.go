@@ -26,6 +26,9 @@ func TestStandardContainsPresentationSettingsOnly(t *testing.T) {
 	if standard.Footer.Name == nil || !*standard.Footer.Name || standard.Footer.Page == nil || !*standard.Footer.Page {
 		t.Fatalf("expected candidate name and page-number footer: %+v", standard.Footer)
 	}
+	if standard.PageBreaks.PageLimit != 2 {
+		t.Fatalf("expected standard page limit 2, got %d", standard.PageBreaks.PageLimit)
+	}
 }
 
 func TestParseRejectsResumeContent(t *testing.T) {
@@ -47,6 +50,10 @@ func TestParseRejectsWrongKindAndInvalidSettings(t *testing.T) {
 		{
 			name: "bad color",
 			data: "schema: resume/v1\nkind: template\nid: standard\npage:\n  width: 216\n  height: 279\nfonts:\n  regular: ResumeSans\n  bold: ResumeSans\ncolors:\n  heading: blue\n",
+		},
+		{
+			name: "negative page limit",
+			data: "schema: resume/v1\nkind: template\nid: standard\npage:\n  width: 216\n  height: 279\nfonts:\n  regular: ResumeSans\n  bold: ResumeSans\npageBreaks:\n  pageLimit: -1\n",
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {

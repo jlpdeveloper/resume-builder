@@ -202,8 +202,8 @@ func ResolveContent(graph *Graph) (*Resolved, error) {
 	// Resolve section order.
 	r.Sections = resolveSections(base, resume)
 
-	// Resolve page limit (resume overrides base).
-	r.PageLimit = resolvePageLimit(base, resume)
+	// Resolve page limit (resume overrides base and template defaults).
+	r.PageLimit = resolvePageLimit(base, resume, template)
 
 	// Resolve metadata.
 	r.Metadata = resume.Metadata
@@ -548,14 +548,16 @@ func resolveSections(base *schema.Base, resume *schema.Resume) []string {
 	}
 }
 
-// resolvePageLimit returns the page limit.
-// Resume overrides base.
-func resolvePageLimit(base *schema.Base, resume *schema.Resume) int {
+// resolvePageLimit prefers the resume, then base, then template limit.
+func resolvePageLimit(base *schema.Base, resume *schema.Resume, template *schema.Template) int {
 	if resume.PageLimit > 0 {
 		return resume.PageLimit
 	}
 	if base != nil && base.PageLimit > 0 {
 		return base.PageLimit
+	}
+	if template != nil && template.PageBreaks.PageLimit > 0 {
+		return template.PageBreaks.PageLimit
 	}
 	return 0
 }
