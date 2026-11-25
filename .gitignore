@@ -33,5 +33,8 @@ go.work.sum
 .idea/
 # .vscode/
 
-#resume folder
+# Keep personal resume files ignored, but version the reference sample.
 resumes
+!resumes/
+resumes/*
+!resumes/example.yml

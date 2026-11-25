@@ -10,6 +10,7 @@ import (
 	"time"
 
 	resumeBuild "github.com/jlpdeveloper/resume-builder/internal/build"
+	resumeInspect "github.com/jlpdeveloper/resume-builder/internal/inspect"
 	"github.com/jlpdeveloper/resume-builder/internal/validate"
 )
 
@@ -182,6 +183,101 @@ func TestExecute_BuildJSON(t *testing.T) {
 	wantTimestamp := time.Date(2024, time.January, 2, 3, 4, 5, 0, time.UTC)
 	if !manifest.GeneratedAt.Equal(wantTimestamp) {
 		t.Errorf("manifest timestamp = %s, want %s", manifest.GeneratedAt, wantTimestamp)
+	}
+}
+
+func TestSampleResumeValidateAndInspect(t *testing.T) {
+	samplePath := filepath.Join("..", "..", "resumes", "example.yml")
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	os.Args = []string{"resume", "validate", samplePath, "--json"}
+	validationOutput := &bytes.Buffer{}
+	validationError := &bytes.Buffer{}
+	if code := execute(validationOutput, validationError); code != 0 {
+		t.Fatalf("sample validation failed: %s", validationError.String())
+	}
+	var validationResult validate.Result
+	if err := json.Unmarshal(validationOutput.Bytes(), &validationResult); err != nil {
+		t.Fatalf("decode sample validation: %v", err)
+	}
+	if !validationResult.Valid {
+		t.Fatalf("sample validation returned errors: %+v", validationResult.Errors)
+	}
+
+	os.Args = []string{"resume", "inspect", samplePath, "--json"}
+	inspectOutput := &bytes.Buffer{}
+	inspectError := &bytes.Buffer{}
+	if code := execute(inspectOutput, inspectError); code != 0 {
+		t.Fatalf("sample inspection failed: %s", inspectError.String())
+	}
+	var report resumeInspect.Report
+	if err := json.Unmarshal(inspectOutput.Bytes(), &report); err != nil {
+		t.Fatalf("decode sample inspection: %v", err)
+	}
+	if !report.Valid || len(report.Sources) != 4 {
+		t.Fatalf("sample did not resolve all four source files: %+v", report.Sources)
+	}
+	wantSections := []string{"summary", "experience", "skills", "impact", "projects", "education", "certifications"}
+	if len(report.Sections) != len(wantSections) {
+		t.Fatalf("resolved sections = %d, want %d", len(report.Sections), len(wantSections))
+	}
+	var summary, experience, skills, impact, projects resumeInspect.Section
+	for i, section := range report.Sections {
+		if section.Name != wantSections[i] {
+			t.Errorf("section %d = %q, want %q", i, section.Name, wantSections[i])
+		}
+		switch section.Name {
+		case "summary":
+			summary = section
+		case "experience":
+			experience = section
+		case "skills":
+			skills = section
+		case "impact":
+			impact = section
+		case "projects":
+			projects = section
+		}
+	}
+	if report.PageLimit != 2 {
+		t.Errorf("inherited page limit = %d, want 2", report.PageLimit)
+	}
+	if len(summary.Items) != 1 || summary.Items[0].Source.Kind != "resume" {
+		t.Errorf("inline summary was not selected from the resume: %+v", summary.Items)
+	}
+	if len(impact.Items) != 2 || impact.Items[0].ID != "deployment-reliability" || impact.Items[1].ID != "service-availability" {
+		t.Errorf("profile impact selections were not resolved: %+v", impact.Items)
+	}
+	if len(experience.Items) != 1 || experience.Items[0].ID != "northstar" {
+		t.Fatalf("resume should replace base experience defaults with Northstar only: %+v", experience.Items)
+	}
+	roles := experience.Items[0].Roles
+	if len(roles) != 2 || roles[0].ID != "senior-platform" || roles[1].ID != "staff-platform" {
+		t.Fatalf("resume role order was not applied: %+v", roles)
+	}
+	if len(skills.Items) != 2 || skills.Items[0].ID != "platform" || skills.Items[1].ID != "reliability" {
+		t.Fatalf("resume skill group selection was not applied: %+v", skills.Items)
+	}
+	if len(projects.Items) != 1 || projects.Items[0].ID != "delivery-platform" {
+		t.Fatalf("resume should replace base project defaults with one project: %+v", projects.Items)
+	}
+
+	outputDir := t.TempDir()
+	pdfPath := filepath.Join(outputDir, "example.pdf")
+	manifestPath := filepath.Join(outputDir, "example.manifest.json")
+	os.Args = []string{"resume", "build", samplePath, "--output", pdfPath, "--manifest", manifestPath, "--timestamp", "2024-01-02T03:04:05Z", "--json"}
+	buildOutput := &bytes.Buffer{}
+	buildError := &bytes.Buffer{}
+	if code := execute(buildOutput, buildError); code != 0 {
+		t.Fatalf("sample build failed: %s", buildError.String())
+	}
+	var buildResult resumeBuild.BuildResult
+	if err := json.Unmarshal(buildOutput.Bytes(), &buildResult); err != nil {
+		t.Fatalf("decode sample build result: %v", err)
+	}
+	if !buildResult.Success || buildResult.Fingerprints.InputSHA256 == "" || buildResult.Fingerprints.OutputSHA256 == "" {
+		t.Fatalf("sample build did not produce fingerprints: %+v", buildResult)
 	}
 }
 

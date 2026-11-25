@@ -1,0 +1,63 @@
+schema: resume/v1
+kind: template
+id: standard
+
+page:
+  width: 215.9
+  height: 279.4
+
+margins:
+  top: 16
+  bottom: 18
+  left: 16
+  right: 16
+
+fonts:
+  regular: ResumeSans
+  bold: ResumeSans
+  italic: ResumeSans
+  boldItalic: ResumeSans
+
+colors:
+  text: "#263238"
+  heading: "#1F4E79"
+  link: "#0563C1"
+  rule: "#8EAADB"
+  background: "#FFFFFF"
+
+sizes:
+  name: 21
+  contact: 8
+  heading: 11
+  roleTitle: 9.5
+  body: 9
+  footer: 7.5
+
+spacing:
+  line: 0.35
+  section: 4
+  roleGap: 0.8
+  bulletGap: 0.3
+
+headings:
+  uppercase: true
+  rule: true
+  ruleSize: 0.35
+
+indent:
+  bullet: 3
+  role: 3
+  accomplishment: 7
+
+headerLayout:
+  align: center
+  compact: true
+
+footerLayout:
+  name: true
+  page: true
+
+pageBreaks:
+  keepHeadingWithContent: true
+  keepRoleWithAccomplishment: true
+  pageLimit: 2

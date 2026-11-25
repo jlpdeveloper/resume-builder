@@ -1,0 +1,59 @@
+schema: resume/v1
+kind: resume
+id: northstar-staff-platform
+
+profile: ../profile.yml
+base: ../bases/staff-engineer.yml
+
+target:
+  company: Northstar Analytics
+  role: Staff Platform Engineer
+  url: https://northstar.example/careers/staff-platform
+  notes: Sample target-specific resume.
+
+headline: Staff platform engineer building reliable developer infrastructure
+summary:
+  text: Platform engineering leader who pairs pragmatic architecture with measurable reliability and delivery improvements.
+impact:
+  - id: deployment-reliability
+  - id: service-availability
+
+# Explicit selections replace the base defaults: Evergreen and the toolkit are omitted.
+experience:
+  - company: northstar
+    roles:
+      - senior-platform
+      - staff-platform
+    bullets:
+      - Designed a multi-tenant control plane that cut environment provisioning to under 20 minutes.
+      - Reduced deployment failures by 62% through progressive delivery and automated rollback.
+
+# Select profile groups and skills instead of inheriting the base skill groups.
+skills:
+  - group: platform
+    skills:
+      - Go
+      - Kubernetes
+      - AWS
+  - group: reliability
+    skills:
+      - OpenTelemetry
+      - SLO design
+
+projects:
+  - id: delivery-platform
+
+# Reorder the inherited base sections for this target.
+sections:
+  - summary
+  - experience
+  - skills
+  - impact
+  - projects
+  - education
+  - certifications
+
+metadata:
+  title: Alex Morgan – Northstar Staff Platform Engineer
+  author: Alex Morgan
+  subject: Sample staff platform engineer resume

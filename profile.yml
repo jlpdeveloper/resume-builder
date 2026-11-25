@@ -1,0 +1,124 @@
+schema: resume/v1
+kind: profile
+id: alex-morgan
+
+header:
+  name: Alex Morgan
+  phone: "+1-206-555-0142"
+  email: alex.morgan@example.com
+  location: Seattle, WA
+  github: https://github.com/example
+  linkedin: https://www.linkedin.com/in/example/
+  credentials:
+    - U.S. work authorization
+  portfolio:
+    - label: Engineering portfolio
+      url: https://example.com/alex-morgan
+
+employment:
+  - id: northstar
+    name: Northstar Analytics
+    location: Seattle, WA
+    link: https://northstar.example/
+    roles:
+      - id: staff-platform
+        title: Staff Platform Engineer
+        start: "2022-01"
+        accomplishments:
+          - Reduced deployment failures by 62% through progressive delivery and automated rollback.
+          - Established service ownership and SLO reviews for 14 production teams.
+          - Mentored five engineers, two of whom moved into technical leadership roles.
+      - id: senior-platform
+        title: Senior Platform Engineer
+        start: "2019-04"
+        end: "2021-12"
+        accomplishments:
+          - Designed a multi-tenant control plane that cut environment provisioning to under 20 minutes.
+          - Improved p95 API latency by 38% through query and cache redesign.
+  - id: evergreen-systems
+    name: Evergreen Systems
+    location: Portland, OR
+    link: https://evergreen.example/
+    roles:
+      - id: systems-engineer
+        title: Software Engineer
+        start: "2016-06"
+        end: "2019-03"
+        accomplishments:
+          - Automated release checks and reduced manual deployment steps from 12 to 4.
+
+skills:
+  - id: platform
+    name: Platform Engineering
+    skills:
+      - Go
+      - Kubernetes
+      - Terraform
+      - AWS
+  - id: reliability
+    name: Reliability and Operations
+    skills:
+      - OpenTelemetry
+      - Prometheus
+      - SLO design
+      - Incident response
+  - id: leadership
+    name: Technical Leadership
+    skills:
+      - Technical roadmaps
+      - Mentoring
+      - Cross-functional planning
+
+projects:
+  - id: delivery-platform
+    name: Developer Delivery Platform
+    role: Technical Lead
+    start: "2022-02"
+    end: "2023-08"
+    link: https://example.com/projects/delivery-platform
+    tech: Go, Kubernetes, Terraform
+    accomplishments:
+      - Built reusable service templates adopted by 11 engineering teams.
+      - Reduced median service onboarding time from three weeks to four days.
+  - id: tracing-toolkit
+    name: OpenTelemetry Migration Toolkit
+    role: Maintainer
+    start: "2021-03"
+    link: https://example.com/projects/tracing-toolkit
+    tech: Go, OpenTelemetry, Prometheus
+    accomplishments:
+      - Published migration guides and shared instrumentation libraries for 20 services.
+
+education:
+  - id: bs-computer-science
+    institution: Cascadia State University
+    degree: Bachelor of Science
+    field: Computer Science
+    graduation: "2015"
+    honors: Magna cum laude
+
+certifications:
+  - id: cka
+    name: Certified Kubernetes Administrator
+    issuer: Cloud Native Computing Foundation
+    dateEarned: "2022-05"
+    expiration: "2027-05"
+    credentialUrl: https://example.com/credentials/cka
+  - id: aws-architect
+    name: AWS Certified Solutions Architect – Associate
+    issuer: Amazon Web Services
+    dateEarned: "2023-08"
+    expiration: "2028-08"
+    credentialUrl: https://example.com/credentials/aws-architect
+
+summaries:
+  - id: platform-leader
+    text: Platform engineering leader focused on reliable developer experiences, cloud infrastructure, and measurable delivery improvements.
+  - id: systems-engineer
+    text: Software engineer experienced in building distributed systems and operating services at scale.
+
+impact:
+  - id: deployment-reliability
+    text: Cut deployment failures by 62% while enabling weekly releases across 14 service teams.
+  - id: service-availability
+    text: Improved platform availability from 99.90% to 99.97% through SLO ownership and safer rollouts.
