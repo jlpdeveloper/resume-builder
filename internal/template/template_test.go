@@ -29,7 +29,7 @@ func TestStandardContainsPresentationSettingsOnly(t *testing.T) {
 	if standard.PageBreaks.PageLimit != 2 {
 		t.Fatalf("expected standard page limit 2, got %d", standard.PageBreaks.PageLimit)
 	}
-	if standard.Spacing.Line != 0.6 || standard.Spacing.Section != 6 || standard.Spacing.EntryGap != 2.5 || standard.Spacing.RoleGap != 1.5 || standard.Spacing.BulletGap != 1 {
+	if standard.Spacing.Line != 0.6 || standard.Spacing.Section != 6 || standard.Spacing.EntryGap != 3.5 || standard.Spacing.RoleGap != 1.5 || standard.Spacing.BulletGap != 1 {
 		t.Fatalf("unexpected standard spacing settings: %+v", standard.Spacing)
 	}
 }

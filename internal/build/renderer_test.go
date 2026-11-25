@@ -177,6 +177,42 @@ func TestRender_EntryGapSeparatesContentBlocks(t *testing.T) {
 	}
 }
 
+func TestRender_StandardEntryGapAddsOneMillimeterAfterSkills(t *testing.T) {
+	resolved := &resolve.Resolved{
+		Header:   schema.Header{Name: "Ada Lovelace"},
+		Sections: []string{"skills"},
+		Skills: []resolve.ResolvedSkillGroup{
+			{Name: "Platform Engineering", Skills: []string{"Go", "Kubernetes"}},
+			{Name: "Reliability", Skills: []string{"OpenTelemetry", "SLO design"}},
+		},
+	}
+	standard, err := resumeTemplate.Standard()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if standard.Spacing.EntryGap != 3.5 {
+		t.Fatalf("expected standard entry gap 3.5 mm, got %v", standard.Spacing.EntryGap)
+	}
+
+	comparisonTemplate := *standard
+	comparisonTemplate.Spacing.EntryGap -= 1
+	withoutExtraGap, err := Render(resolved, &comparisonTemplate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	withExtraGap, err := Render(resolved, standard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	withoutTexts := extractTextItems(t, withoutExtraGap.PDF)
+	withTexts := extractTextItems(t, withExtraGap.PDF)
+	withoutDistance := findTextItem(t, withoutTexts, "Go, Kubernetes").Y - findTextItem(t, withoutTexts, "Reliability").Y
+	withDistance := findTextItem(t, withTexts, "Go, Kubernetes").Y - findTextItem(t, withTexts, "Reliability").Y
+	if withDistance-withoutDistance < 0.8 {
+		t.Errorf("standard entry gap did not add 1 mm after the skills line: without=%v with=%v", withoutDistance, withDistance)
+	}
+}
+
 func TestRender_SectionRuleHasGapBeforeContent(t *testing.T) {
 	resolved := &resolve.Resolved{
 		Header:   schema.Header{Name: "Ada Lovelace"},
