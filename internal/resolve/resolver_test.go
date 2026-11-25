@@ -194,21 +194,17 @@ target:
 }
 
 func TestResolve_CircularReference(t *testing.T) {
-	// With the current schema, a true cycle is hard to create because:
-	// - Profile and Template have no file references.
-	// - Base references profile and template (leaf kinds).
-	// - Resume references profile, base, and template.
-	// The kind check prevents a base from being referenced as a profile,
-	// which would be needed to form a cycle. But the cycle detection
-	// is still important for future extensibility.
-	// Test the CycleError type directly.
-
-	cycle := &CycleError{cycle: []string{"a.yaml", "b.yaml", "a.yaml"}}
-	if cycle.Error() == "" {
-		t.Error("expected non-empty error string from CycleError")
+	path := "a.yaml"
+	err := (&Resolver{}).resolveFile(path, &Graph{}, map[string]bool{}, []string{path})
+	if err == nil {
+		t.Fatal("expected circular reference error, got nil")
 	}
-	if len(cycle.Cycle()) != 3 {
-		t.Error("expected cycle of length 3")
+	var cycle *CycleError
+	if !errors.As(err, &cycle) {
+		t.Fatalf("expected CycleError, got %T: %v", err, err)
+	}
+	if len(cycle.Cycle()) != 2 || cycle.Cycle()[0] != path || cycle.Cycle()[1] != path {
+		t.Errorf("unexpected cycle chain: %v", cycle.Cycle())
 	}
 }
 
