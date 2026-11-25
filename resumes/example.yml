@@ -22,8 +22,8 @@ impact:
 experience:
   - company: northstar
     roles:
-      - senior-platform
       - staff-platform
+      - senior-platform
     bullets:
       - Designed a multi-tenant control plane that cut environment provisioning to under 20 minutes.
       - Reduced deployment failures by 62% through progressive delivery and automated rollback.
