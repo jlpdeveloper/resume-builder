@@ -60,3 +60,4 @@ footerLayout:
 pageBreaks:
   keepHeadingWithContent: true
   keepRoleWithAccomplishment: true
+  pageLimit: 2

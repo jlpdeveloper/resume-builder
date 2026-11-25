@@ -39,6 +39,15 @@ const defaultFontFamily = "ResumeSans"
 type RenderResult struct {
 	PDF       []byte
 	PageCount int
+	PageLimit int
+	Warnings  []Warning
+}
+
+// Warning reports a non-fatal rendering condition.
+type Warning struct {
+	Code    string `json:"code"`
+	Section string `json:"section,omitempty"`
+	Message string `json:"message"`
 }
 
 type renderer struct {
@@ -62,8 +71,9 @@ func Render(resolved *resolve.Resolved, template *schema.Template) (RenderResult
 		return RenderResult{}, fmt.Errorf("resolved resume is required")
 	}
 	if template == nil {
-		template = resolved.Template
-		if template == nil {
+		if resolved.TemplatePath != "" && resolved.Template != nil {
+			template = resolved.Template
+		} else {
 			var err error
 			template, err = resumeTemplate.Standard()
 			if err != nil {
@@ -115,21 +125,28 @@ func Render(resolved *resolve.Resolved, template *schema.Template) (RenderResult
 	}
 
 	r.renderHeader(m, resolved)
+	lastSection := ""
 	for _, section := range resolved.Sections {
 		blocks := r.sectionBlocks(section, resolved)
 		if len(blocks) == 0 {
 			continue
 		}
+		lastSection = section
 		heading := sectionHeading(section, r.template.Headings.Uppercase)
-		first := []core.Component{r.textWithColor(heading, r.bold, fontstyle.Bold, r.headingSize, align.Left, 0, r.template.Spacing.Section, r.headingColor)}
+		headingRow := []core.Component{r.textWithColor(heading, r.bold, fontstyle.Bold, r.headingSize, align.Left, 0, r.template.Spacing.Section, r.headingColor)}
 		if boolValue(r.template.Headings.Rule, false) {
-			first = append(first, line.New(props.Line{
+			headingRow = append(headingRow, line.New(props.Line{
 				Color: r.ruleColor, Style: linestyle.Solid, Thickness: positive(r.template.Headings.RuleSize, 0.2),
 				Orientation: orientation.Horizontal, SizePercent: 100,
 			}))
 		}
-		first = append(first, blocks[0].first...)
-		r.addRow(m, first)
+		if boolValue(r.template.PageBreaks.KeepHeadingWithContent, true) {
+			headingRow = append(headingRow, blocks[0].first...)
+			r.addRow(m, headingRow)
+		} else {
+			r.addRow(m, headingRow)
+			r.addRow(m, blocks[0].first)
+		}
 		r.addRows(m, blocks[0].rest)
 		for _, block := range blocks[1:] {
 			r.addRow(m, block.first)
@@ -146,7 +163,19 @@ func Render(resolved *resolve.Resolved, template *schema.Template) (RenderResult
 	if err != nil {
 		return RenderResult{}, fmt.Errorf("count PDF pages: %w", err)
 	}
-	return RenderResult{PDF: pdfBytes, PageCount: pageCount}, nil
+	pageLimit := resolved.PageLimit
+	if pageLimit <= 0 {
+		pageLimit = r.template.PageBreaks.PageLimit
+	}
+	warnings := []Warning{}
+	if pageLimit > 0 && pageCount > pageLimit {
+		message := fmt.Sprintf("page limit of %d exceeded: generated %d pages", pageLimit, pageCount)
+		if lastSection != "" {
+			message += fmt.Sprintf("; overflow reached section %q", lastSection)
+		}
+		warnings = append(warnings, Warning{Code: "page_limit_exceeded", Section: lastSection, Message: message})
+	}
+	return RenderResult{PDF: pdfBytes, PageCount: pageCount, PageLimit: pageLimit, Warnings: warnings}, nil
 }
 
 func newRenderer(template *schema.Template) *renderer {
@@ -309,6 +338,7 @@ func (r *renderer) experienceBlock(employer resolve.ResolvedEmployer) itemBlock 
 		company = r.link(name, employer.Link, r.bodySize)
 	}
 	block := itemBlock{first: []core.Component{company}}
+	keepRoleWithAccomplishment := boolValue(r.template.PageBreaks.KeepRoleWithAccomp, true)
 	for roleIndex, role := range employer.Roles {
 		roleTitle := role.Title
 		if role.Start != "" {
@@ -321,14 +351,22 @@ func (r *renderer) experienceBlock(employer resolve.ResolvedEmployer) itemBlock 
 		if roleIndex == 0 {
 			block.first = append(block.first, roleComponent)
 			if len(role.Accomplishments) > 0 {
-				block.first = append(block.first, r.bullet(role.Accomplishments[0], r.template.Indent.Accomp))
+				bullet := r.bullet(role.Accomplishments[0], r.template.Indent.Accomp)
+				if keepRoleWithAccomplishment {
+					block.first = append(block.first, bullet)
+				} else {
+					block.rest = append(block.rest, []core.Component{bullet})
+				}
 			}
 		} else {
 			first := []core.Component{roleComponent}
-			if len(role.Accomplishments) > 0 {
+			if len(role.Accomplishments) > 0 && keepRoleWithAccomplishment {
 				first = append(first, r.bullet(role.Accomplishments[0], r.template.Indent.Accomp))
 			}
 			block.rest = append(block.rest, first)
+			if len(role.Accomplishments) > 0 && !keepRoleWithAccomplishment {
+				block.rest = append(block.rest, []core.Component{r.bullet(role.Accomplishments[0], r.template.Indent.Accomp)})
+			}
 		}
 		start := 0
 		if len(role.Accomplishments) > 0 {

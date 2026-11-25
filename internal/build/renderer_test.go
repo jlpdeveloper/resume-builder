@@ -3,7 +3,6 @@ package build
 import (
 	"bytes"
 	"context"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -71,27 +70,15 @@ func TestRender_EmbeddedFontsMetadataLinksAndPagination(t *testing.T) {
 	if info.Title != resolved.Metadata.Title || info.Author != resolved.Metadata.Author || info.Subject != resolved.Metadata.Subject {
 		t.Errorf("PDF metadata mismatch: %+v", info)
 	}
-	pdfPath := filepath.Join(t.TempDir(), "resume.pdf")
-	if err := os.WriteFile(pdfPath, result.PDF, 0600); err != nil {
-		t.Fatal(err)
-	}
-	pdfFile, reader, err := pdf.Open(pdfPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer pdfFile.Close()
-	textReader, err := reader.GetPlainText()
-	if err != nil {
-		t.Fatal(err)
-	}
-	visibleText, err := io.ReadAll(textReader)
-	if err != nil {
-		t.Fatal(err)
-	}
+	pages := extractPages(t, result.PDF)
+	visibleText := strings.Join(pages, "\n")
 	for _, want := range []string{"Ada Lovelace", "Experienced systems engineer.", "Designed resilient systems."} {
-		if !strings.Contains(string(visibleText), want) {
+		if !strings.Contains(visibleText, want) {
 			t.Errorf("extracted PDF text does not contain %q: %s", want, visibleText)
 		}
+	}
+	if strings.TrimSpace(pages[len(pages)-1]) == "" {
+		t.Error("generated PDF has an empty final page")
 	}
 }
 
@@ -119,7 +106,109 @@ func TestStandardTemplateMapsToRendererSettings(t *testing.T) {
 	if r.ruleColor.Red != 142 || r.ruleColor.Green != 170 || r.ruleColor.Blue != 219 {
 		t.Errorf("rule color was not mapped: %+v", r.ruleColor)
 	}
+	if r.template.PageBreaks.PageLimit != 2 {
+		t.Errorf("default page limit was not mapped: %d", r.template.PageBreaks.PageLimit)
+	}
 	if !boolValue(r.template.Headings.Rule, false) || !footerNameEnabled(r.template.Footer.Name) || !footerPageEnabled(r.template.Footer.Page) {
 		t.Errorf("heading/footer settings were not mapped: %+v", r.template)
 	}
+}
+
+func TestRender_PageBoundariesAndPageLimitWarning(t *testing.T) {
+	resolved := &resolve.Resolved{
+		Header:    schema.Header{Name: "Alex Example"},
+		Target:    schema.Target{Company: "Acme", Role: "Engineer"},
+		PageLimit: 1,
+		Sections:  []string{"impact", "experience"},
+		Impact:    make([]resolve.ResolvedImpact, 100),
+		Experience: []resolve.ResolvedEmployer{{
+			ID: "acme", Name: "Acme",
+			Roles: []resolve.ResolvedRole{{
+				ID: "role-1", Title: "Engineer", Start: "2020",
+				Accomplishments: []string{"First accomplishment stays with the role."},
+				Source:          "profile",
+			}},
+			Source: "profile",
+		}},
+	}
+	for i := range resolved.Impact {
+		resolved.Impact[i] = resolve.ResolvedImpact{ID: "impact", Text: "Impact statement demonstrates reliable service delivery."}
+	}
+	for i := 0; i < 40; i++ {
+		resolved.Experience[0].Roles[0].Accomplishments = append(resolved.Experience[0].Roles[0].Accomplishments, "A complete accomplishment sentence that remains intact after pagination.")
+	}
+
+	result, err := Render(resolved, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.PageCount < 2 || result.PageLimit != 1 {
+		t.Fatalf("expected multi-page output over a one-page limit, got %+v", result)
+	}
+	if len(result.Warnings) != 1 || result.Warnings[0].Code != "page_limit_exceeded" || result.Warnings[0].Section != "experience" {
+		t.Fatalf("expected overflow warning to identify experience, got %+v", result.Warnings)
+	}
+
+	pages := extractPages(t, result.PDF)
+	if strings.TrimSpace(pages[len(pages)-1]) == "" {
+		t.Fatal("renderer left an empty trailing page")
+	}
+	sectionPage := pageContaining(pages, "EXPERIENCE")
+	if sectionPage < 2 || !strings.Contains(pages[sectionPage-1], "Acme") || !strings.Contains(pages[sectionPage-1], "Engineer") || !strings.Contains(pages[sectionPage-1], "First accomplishment stays with the role.") {
+		t.Fatalf("section heading, employer, role, and first accomplishment should share a page: %v", pages)
+	}
+	if !strings.Contains(strings.Join(pages, "\n"), "A complete accomplishment sentence that remains intact after pagination.") {
+		t.Fatal("long experience entry was lost during pagination")
+	}
+
+	second, err := Render(resolved, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.PageCount != result.PageCount || !equalStrings(extractPages(t, second.PDF), pages) {
+		t.Fatal("pagination changed for identical input")
+	}
+}
+
+func extractPages(t *testing.T, data []byte) []string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "resume.pdf")
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	pdfFile, reader, err := pdf.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pdfFile.Close()
+	pages := make([]string, 0, reader.NumPage())
+	for pageNumber := 1; pageNumber <= reader.NumPage(); pageNumber++ {
+		text, err := reader.Page(pageNumber).GetPlainText(nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		pages = append(pages, text)
+	}
+	return pages
+}
+
+func pageContaining(pages []string, value string) int {
+	for i, page := range pages {
+		if strings.Contains(page, value) {
+			return i + 1
+		}
+	}
+	return 0
+}
+
+func equalStrings(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if left[i] != right[i] {
+			return false
+		}
+	}
+	return true
 }

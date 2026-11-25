@@ -1,6 +1,7 @@
 package resolve
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -1221,5 +1222,46 @@ certifications:
 	// Sections from base (resume doesn't override).
 	if len(resolved.Sections) != 5 {
 		t.Errorf("expected 5 sections from base, got %d", len(resolved.Sections))
+	}
+}
+
+func TestResolveContent_PageLimitPrecedence(t *testing.T) {
+	for _, test := range []struct {
+		name            string
+		basePageLimit   int
+		resumePageLimit int
+		want            int
+	}{
+		{name: "template fallback", want: 3},
+		{name: "base overrides template", basePageLimit: 2, want: 2},
+		{name: "resume overrides base and template", basePageLimit: 2, resumePageLimit: 1, want: 1},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeYAMLContent(t, dir, "profile.yaml", "schema: resume/v1\nkind: profile\nid: p1\nheader:\n  name: Alex Example\n")
+			writeYAMLContent(t, dir, "template.yaml", "schema: resume/v1\nkind: template\nid: t1\npageBreaks:\n  pageLimit: 3\n")
+			base := "schema: resume/v1\nkind: base\nid: b1\nprofile: profile.yaml\ntemplate: template.yaml\n"
+			if test.basePageLimit > 0 {
+				base += fmt.Sprintf("pageLimit: %d\n", test.basePageLimit)
+			}
+			writeYAMLContent(t, dir, "base.yaml", base)
+			resume := "schema: resume/v1\nkind: resume\nid: r1\nprofile: profile.yaml\nbase: base.yaml\ntemplate: template.yaml\ntarget:\n  company: Acme\n  role: Engineer\n"
+			if test.resumePageLimit > 0 {
+				resume += fmt.Sprintf("pageLimit: %d\n", test.resumePageLimit)
+			}
+			writeYAMLContent(t, dir, "resume.yaml", resume)
+
+			graph, err := (&Resolver{}).Resolve(filepath.Join(dir, "resume.yaml"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			resolved, err := ResolveContent(graph)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if resolved.PageLimit != test.want {
+				t.Errorf("expected page limit %d, got %d", test.want, resolved.PageLimit)
+			}
+		})
 	}
 }
