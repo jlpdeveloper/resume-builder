@@ -12,7 +12,7 @@ import (
 )
 
 func TestExecute_StubCommands(t *testing.T) {
-	stubs := []string{"diff", "build", "dependencies"}
+	stubs := []string{"build", "dependencies"}
 
 	for _, cmd := range stubs {
 		t.Run(cmd, func(t *testing.T) {

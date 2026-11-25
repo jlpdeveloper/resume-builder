@@ -63,12 +63,14 @@ type Resolved struct {
 
 // ResolvedSummary tracks the source of a summary.
 type ResolvedSummary struct {
+	ID     string
 	Text   string
 	Source string // "profile" or "resume"
 }
 
 // ResolvedImpact tracks the source of an impact statement.
 type ResolvedImpact struct {
+	ID     string
 	Text   string
 	Source string // "profile" or "resume"
 }
@@ -158,11 +160,11 @@ func ResolveContent(graph *Graph) (*Resolved, error) {
 	}
 
 	r := &Resolved{
-		ProfilePath:  profileDoc.Path,
-		ResumePath:   resumeDoc.Path,
-		Header:       profile.Header,
-		Target:       resume.Target,
-		Headline:     resume.Headline,
+		ProfilePath: profileDoc.Path,
+		ResumePath:  resumeDoc.Path,
+		Header:      profile.Header,
+		Target:      resume.Target,
+		Headline:    resume.Headline,
 	}
 
 	if baseDoc != nil {
@@ -228,6 +230,7 @@ func resolveSummary(profile *schema.Profile, resume *schema.Resume) (*ResolvedSu
 		for _, s := range profile.Summaries {
 			if s.ID == resume.Summary.ID {
 				return &ResolvedSummary{
+					ID:     s.ID,
 					Text:   s.Text,
 					Source: "profile",
 				}, nil
@@ -247,6 +250,7 @@ func resolveImpact(profile *schema.Profile, resume *schema.Resume) []ResolvedImp
 	for _, sel := range resume.Impact {
 		if sel.Text != "" {
 			result = append(result, ResolvedImpact{
+				ID:     sel.ID,
 				Text:   sel.Text,
 				Source: "resume",
 			})
@@ -254,6 +258,7 @@ func resolveImpact(profile *schema.Profile, resume *schema.Resume) []ResolvedImp
 			for _, s := range profile.Impact {
 				if s.ID == sel.ID {
 					result = append(result, ResolvedImpact{
+						ID:     s.ID,
 						Text:   s.Text,
 						Source: "profile",
 					})
