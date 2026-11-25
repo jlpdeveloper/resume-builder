@@ -11,6 +11,8 @@ import (
 
 	"github.com/jlpdeveloper/resume-builder/internal/resolve"
 	"github.com/jlpdeveloper/resume-builder/internal/schema"
+	resumeTemplate "github.com/jlpdeveloper/resume-builder/internal/template"
+	"github.com/johnfercher/maroto/v2/pkg/consts/align"
 	"github.com/ledongthuc/pdf"
 	"github.com/pdfcpu/pdfcpu/pkg/api"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
@@ -96,5 +98,28 @@ func TestRender_EmbeddedFontsMetadataLinksAndPagination(t *testing.T) {
 func TestRender_RejectsNilResume(t *testing.T) {
 	if _, err := Render(nil, nil); err == nil {
 		t.Fatal("expected nil resolved resume to return an error")
+	}
+}
+
+func TestStandardTemplateMapsToRendererSettings(t *testing.T) {
+	standard, err := resumeTemplate.Standard()
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := newRenderer(standard)
+	if r.regular != "ResumeSans" || r.bold != "ResumeSans" || r.nameSize != 21 || r.contactSize != 8 {
+		t.Errorf("font settings were not mapped: %+v", r)
+	}
+	if r.headingAlign != align.Center || !r.contactCompact {
+		t.Errorf("header settings were not mapped: %+v", r)
+	}
+	if r.headingColor.Red != 31 || r.headingColor.Green != 78 || r.headingColor.Blue != 121 {
+		t.Errorf("heading color was not mapped: %+v", r.headingColor)
+	}
+	if r.ruleColor.Red != 142 || r.ruleColor.Green != 170 || r.ruleColor.Blue != 219 {
+		t.Errorf("rule color was not mapped: %+v", r.ruleColor)
+	}
+	if !boolValue(r.template.Headings.Rule, false) || !footerNameEnabled(r.template.Footer.Name) || !footerPageEnabled(r.template.Footer.Page) {
+		t.Errorf("heading/footer settings were not mapped: %+v", r.template)
 	}
 }

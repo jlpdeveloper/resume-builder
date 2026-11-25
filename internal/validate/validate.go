@@ -14,6 +14,7 @@ import (
 
 	"github.com/jlpdeveloper/resume-builder/internal/resolve"
 	"github.com/jlpdeveloper/resume-builder/internal/schema"
+	resumeTemplate "github.com/jlpdeveloper/resume-builder/internal/template"
 	"gopkg.in/yaml.v3"
 )
 
@@ -52,11 +53,6 @@ type baseFile struct {
 type resumeFile struct {
 	schema.Envelope `yaml:",inline"`
 	schema.Resume   `yaml:",inline"`
-}
-
-type templateFile struct {
-	schema.Envelope `yaml:",inline"`
-	schema.Template `yaml:",inline"`
 }
 
 var (
@@ -172,11 +168,7 @@ func decodeStrict(doc *resolve.Document) (any, error) {
 		}
 		return &file.Resume, nil
 	case schema.KindTemplate:
-		var file templateFile
-		if err := decoder.Decode(&file); err != nil {
-			return nil, err
-		}
-		return &file.Template, nil
+		return resumeTemplate.Parse(doc.Raw)
 	default:
 		return nil, fmt.Errorf("unsupported document kind %q", doc.Kind)
 	}
