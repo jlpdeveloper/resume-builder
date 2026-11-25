@@ -233,7 +233,11 @@ func renderAt(resolved *resolve.Resolved, template *schema.Template, generatedAt
 		}
 		r.addRows(m, blocks[0].rest)
 		for _, block := range blocks[1:] {
-			r.addEntryGap(m)
+			entryGap := r.template.Spacing.EntryGap
+			if section == "impact" {
+				entryGap = r.template.Spacing.ImpactGap
+			}
+			r.addEntryGap(m, entryGap)
 			r.addRow(m, block.first)
 			r.addRows(m, block.rest)
 		}
@@ -606,9 +610,9 @@ func (r *renderer) addRow(m core.Maroto, components []core.Component) {
 	}
 }
 
-func (r *renderer) addEntryGap(m core.Maroto) {
-	if r.template.Spacing.EntryGap > 0 {
-		m.AddRows(row.New(r.template.Spacing.EntryGap).Add(col.New(12)))
+func (r *renderer) addEntryGap(m core.Maroto, gap float64) {
+	if gap > 0 {
+		m.AddRows(row.New(gap).Add(col.New(12)))
 	}
 }
 

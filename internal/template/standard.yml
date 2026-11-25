@@ -37,6 +37,7 @@ spacing:
   line: 0.6
   section: 6
   entryGap: 3.5
+  impactGap: 0
   roleGap: 1.5
   bulletGap: 0.5
 

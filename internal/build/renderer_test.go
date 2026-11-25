@@ -204,6 +204,51 @@ func TestRender_EntryGapSeparatesContentBlocks(t *testing.T) {
 	}
 }
 
+func TestRender_ImpactSpacingDoesNotUseEntryGap(t *testing.T) {
+	resolved := &resolve.Resolved{
+		Header:   schema.Header{Name: "Ada Lovelace"},
+		Sections: []string{"impact"},
+		Impact: []resolve.ResolvedImpact{
+			{Text: "First impact statement."},
+			{Text: "Second impact statement."},
+		},
+	}
+	standard, err := resumeTemplate.Standard()
+	if err != nil {
+		t.Fatal(err)
+	}
+	withoutEntryGap := *standard
+	withoutEntryGap.Spacing.EntryGap = 0
+	configuredImpactGap := *standard
+	configuredImpactGap.Spacing.ImpactGap = 2
+
+	withResult, err := Render(resolved, standard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	withoutResult, err := Render(resolved, &withoutEntryGap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	configuredImpactResult, err := Render(resolved, &configuredImpactGap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	withTexts := extractTextItems(t, withResult.PDF)
+	withoutTexts := extractTextItems(t, withoutResult.PDF)
+	configuredImpactTexts := extractTextItems(t, configuredImpactResult.PDF)
+	withDistance := findTextItem(t, withTexts, "First impact statement").Y - findTextItem(t, withTexts, "Second impact statement").Y
+	withoutDistance := findTextItem(t, withoutTexts, "First impact statement").Y - findTextItem(t, withoutTexts, "Second impact statement").Y
+	if abs(withDistance-withoutDistance) > 0.1 {
+		t.Errorf("impact spacing should not include the general entry gap: with=%v without=%v", withDistance, withoutDistance)
+	}
+	configuredImpactDistance := findTextItem(t, configuredImpactTexts, "First impact statement").Y - findTextItem(t, configuredImpactTexts, "Second impact statement").Y
+	wantImpactGapPoints := 2 * 72.0 / 25.4
+	if abs(configuredImpactDistance-withDistance-wantImpactGapPoints) > 0.1 {
+		t.Errorf("impactGap should add 2 mm between impact statements: default=%v configured=%v", withDistance, configuredImpactDistance)
+	}
+}
+
 func TestRender_StandardEntryGapAddsOneMillimeterAfterSkills(t *testing.T) {
 	resolved := &resolve.Resolved{
 		Header:   schema.Header{Name: "Ada Lovelace"},

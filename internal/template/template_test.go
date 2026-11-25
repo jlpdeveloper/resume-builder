@@ -29,7 +29,7 @@ func TestStandardContainsPresentationSettingsOnly(t *testing.T) {
 	if standard.PageBreaks.PageLimit != 2 {
 		t.Fatalf("expected standard page limit 2, got %d", standard.PageBreaks.PageLimit)
 	}
-	if standard.Spacing.Line != 0.6 || standard.Spacing.Section != 6 || standard.Spacing.EntryGap != 3.5 || standard.Spacing.RoleGap != 1.5 || standard.Spacing.BulletGap != 0.5 {
+	if standard.Spacing.Line != 0.6 || standard.Spacing.Section != 6 || standard.Spacing.EntryGap != 3.5 || standard.Spacing.ImpactGap != 0 || standard.Spacing.RoleGap != 1.5 || standard.Spacing.BulletGap != 0.5 {
 		t.Fatalf("unexpected standard spacing settings: %+v", standard.Spacing)
 	}
 }
@@ -61,6 +61,10 @@ func TestParseRejectsWrongKindAndInvalidSettings(t *testing.T) {
 		{
 			name: "negative entry spacing",
 			data: "schema: resume/v1\nkind: template\nid: standard\npage:\n  width: 216\n  height: 279\nfonts:\n  regular: ResumeSans\n  bold: ResumeSans\nspacing:\n  entryGap: -1\n",
+		},
+		{
+			name: "negative impact spacing",
+			data: "schema: resume/v1\nkind: template\nid: standard\npage:\n  width: 216\n  height: 279\nfonts:\n  regular: ResumeSans\n  bold: ResumeSans\nspacing:\n  impactGap: -1\n",
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
