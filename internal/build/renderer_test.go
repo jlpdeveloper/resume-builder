@@ -140,6 +140,33 @@ func TestRender_TextComponentsDoNotOverlap(t *testing.T) {
 	}
 }
 
+func TestRender_SkillGroupNameHasBreathingRoomBeforeSkills(t *testing.T) {
+	resolved := &resolve.Resolved{
+		Header:   schema.Header{Name: "Ada Lovelace"},
+		Sections: []string{"skills"},
+		Skills: []resolve.ResolvedSkillGroup{{
+			Name: "Platform Engineering", Skills: []string{"Go", "AWS"},
+		}},
+	}
+	standard, err := resumeTemplate.Standard()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := Render(resolved, standard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	texts := extractTextItems(t, result.PDF)
+	name := findTextItem(t, texts, "Platform Engineering")
+	skills := findTextItem(t, texts, "Go, AWS")
+	pointsPerMillimeter := 72.0 / 25.4
+	distanceMM := (name.Y - skills.Y) / pointsPerMillimeter
+	minimumMM := standard.Sizes.Body/pointsPerMillimeter + 1
+	if distanceMM < minimumMM-0.1 {
+		t.Errorf("expected at least 1 mm of additional space after the skill group name, got %v mm total", distanceMM)
+	}
+}
+
 func TestRender_EntryGapSeparatesContentBlocks(t *testing.T) {
 	resolved := &resolve.Resolved{
 		Header:   schema.Header{Name: "Ada Lovelace"},

@@ -445,7 +445,7 @@ func (r *renderer) sectionBlocks(section string, resolved *resolve.Resolved) []i
 	case "skills":
 		for _, group := range resolved.Skills {
 			block := itemBlock{first: []core.Component{
-				r.text(group.Name, r.bold, fontstyle.Bold, r.bodySize, align.Left, 0, 0),
+				r.textWithColor(group.Name, r.bold, fontstyle.Bold, r.bodySize, align.Left, 0, 0, 1, r.textColor),
 				r.text(strings.Join(group.Skills, ", "), r.regular, fontstyle.Normal, r.bodySize, align.Left, 0, 0),
 			}}
 			blocks = append(blocks, block)
