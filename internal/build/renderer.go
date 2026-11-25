@@ -29,6 +29,7 @@ import (
 	"github.com/johnfercher/maroto/v2/pkg/props"
 	"github.com/pdfcpu/pdfcpu/pkg/api"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
+	pdftypes "github.com/pdfcpu/pdfcpu/pkg/pdfcpu/types"
 	"github.com/phpdave11/gofpdf"
 	"golang.org/x/image/font/gofont/gobold"
 	"golang.org/x/image/font/gofont/gobolditalic"
@@ -68,9 +69,9 @@ type renderer struct {
 	nameSize, contactSize, headingSize, roleSize  float64
 	bodySize, footerSize                          float64
 	headingAlign                                  align.Type
-	contactCompact                                bool
 	expectedText                                  []string
 	repeatedFooterName                            string
+	headerLinkRects                               []headerLinkRect
 }
 
 type itemBlock struct {
@@ -78,13 +79,73 @@ type itemBlock struct {
 	rest  [][]core.Component
 }
 
-type contactItem struct {
-	label string
-	href  string
-}
-
 type verticalStack struct {
 	components []core.Component
+}
+
+type headerLinkTarget struct {
+	label  string
+	target string
+}
+
+type headerLinkRect struct {
+	x, y, width, height float64
+	start, end          int
+	target              string
+}
+
+type headerContactRow struct {
+	renderer  *renderer
+	component core.Component
+	value     string
+	font      props.Font
+	links     []headerLinkTarget
+}
+
+func (c *headerContactRow) GetStructure() *node.Node[core.Structure] {
+	return c.component.GetStructure()
+}
+
+func (c *headerContactRow) SetConfig(config *entity.Config) {
+	c.component.SetConfig(config)
+}
+
+func (c *headerContactRow) GetHeight(provider core.Provider, cell *entity.Cell) float64 {
+	return c.component.GetHeight(provider, cell)
+}
+
+func (c *headerContactRow) Render(provider core.Provider, cell *entity.Cell) {
+	startX := cell.X + c.renderer.template.Margins.Left
+	startY := cell.Y + c.renderer.template.Margins.Top
+	lineHeight := provider.GetFontHeight(&c.font)
+	links := c.renderer.measureHeaderLinks(c.value, startX, startY, c.font, lineHeight, c.links)
+	if len(links) == 0 {
+		c.component.Render(provider, cell)
+		return
+	}
+	c.renderer.headerLinkRects = append(c.renderer.headerLinkRects, links...)
+	metrics := headerTextMetrics(c.font)
+	start := 0
+	for _, link := range links {
+		c.renderText(provider, cell, metrics, start, link.start, c.font.Color)
+		c.renderText(provider, cell, metrics, link.start, link.end, c.renderer.linkColor)
+		start = link.end
+	}
+	c.renderText(provider, cell, metrics, start, len(c.value), c.font.Color)
+}
+
+func (c *headerContactRow) renderText(provider core.Provider, cell *entity.Cell, metrics *gofpdf.Fpdf, start, end int, color *props.Color) {
+	if start == end {
+		return
+	}
+	segmentCell := cell.Copy()
+	offset := metrics.GetStringWidth(c.value[:start])
+	segmentCell.X += offset
+	segmentCell.Width -= offset
+	provider.AddText(c.value[start:end], &segmentCell, &props.Text{
+		Family: c.font.Family, Style: c.font.Style, Size: c.font.Size,
+		Align: align.Left, Color: color, VerticalPadding: c.renderer.template.Spacing.Line,
+	})
 }
 
 type verticalSpacer struct {
@@ -214,9 +275,13 @@ func renderAt(resolved *resolve.Resolved, template *schema.Template, generatedAt
 		if len(blocks) == 0 {
 			continue
 		}
-		lastSection = section
 		heading := sectionHeading(section, r.template.Headings.Uppercase)
-		headingRow := []core.Component{r.textWithColor(heading, r.bold, fontstyle.Bold, r.headingSize, align.Left, 0, r.template.Spacing.Section, 1, r.headingColor)}
+		headingTop := r.template.Spacing.Section
+		if lastSection == "" {
+			headingTop = 0
+		}
+		lastSection = section
+		headingRow := []core.Component{r.textWithColor(heading, r.bold, fontstyle.Bold, r.headingSize, align.Left, 0, headingTop, 1, r.headingColor)}
 		if boolValue(r.template.Headings.Rule, false) {
 			headingRow = append(headingRow, line.New(props.Line{
 				Color: r.ruleColor, Style: linestyle.Solid, Thickness: positive(r.template.Headings.RuleSize, 0.2),
@@ -248,6 +313,12 @@ func renderAt(resolved *resolve.Resolved, template *schema.Template, generatedAt
 		return RenderResult{}, fmt.Errorf("generate PDF: %w", err)
 	}
 	pdfBytes := doc.GetBytes()
+	if len(r.headerLinkRects) > 0 {
+		pdfBytes, err = addHeaderLinkAnnotations(pdfBytes, r.headerLinkRects, m.GetCurrentConfig().Dimensions.Height)
+		if err != nil {
+			return RenderResult{}, fmt.Errorf("add header link annotations: %w", err)
+		}
+	}
 	pageCount, err := api.PageCount(context.Background(), bytes.NewReader(pdfBytes), model.NewDefaultConfiguration())
 	if err != nil {
 		return RenderResult{}, fmt.Errorf("count PDF pages: %w", err)
@@ -306,7 +377,6 @@ func newRenderer(template *schema.Template) *renderer {
 	r.roleSize = positive(r.template.Sizes.RoleTitle, 10)
 	r.bodySize = positive(r.template.Sizes.Body, 9.5)
 	r.footerSize = positive(r.template.Sizes.Footer, 8)
-	r.contactCompact = boolValue(r.template.Header.Compact, true)
 	r.headingAlign = align.Left
 	switch strings.ToLower(r.template.Header.Align) {
 	case "center":
@@ -370,108 +440,139 @@ func isPDFWhitespace(value byte) bool {
 
 func (r *renderer) renderHeader(m core.Maroto, resolved *resolve.Resolved) {
 	black := &props.Color{Red: 0, Green: 0, Blue: 0}
-	m.AddAutoRow(col.New(12).Add(r.textWithColor(resolved.Header.Name, r.bold, fontstyle.Bold, r.nameSize, align.Center, 0, 0, 0, black)))
+	m.AddRows(row.New(13).Add(col.New(12).Add(r.textWithColor(resolved.Header.Name, r.bold, fontstyle.Bold, r.nameSize, align.Left, 0, 0, 0, black))))
 	addHeaderSpacer(m, 1)
 
-	contact := make([]contactItem, 0, 6+len(resolved.Header.Portfolio))
-	addContact := func(label, href string) {
-		if strings.TrimSpace(label) != "" {
-			contact = append(contact, contactItem{label: label, href: href})
-		}
-	}
-	addContact(resolved.Header.Phone, "")
-	addContact(resolved.Header.Email, "mailto:"+resolved.Header.Email)
-	addContact(resolved.Header.Location, "")
+	contact := joinNonEmpty(" · ", resolved.Header.Phone, resolved.Header.Email, resolved.Header.Location)
+	profiles := make([]string, 0, 2+len(resolved.Header.Portfolio))
+	profileLinks := make([]headerLinkTarget, 0, 2+len(resolved.Header.Portfolio))
 	if resolved.Header.GitHub != "" {
-		addContact("GitHub", resolved.Header.GitHub)
+		profiles = append(profiles, "GitHub")
+		if target := headerHTTPSURL(resolved.Header.GitHub); target != "" {
+			profileLinks = append(profileLinks, headerLinkTarget{label: "GitHub", target: target})
+		}
 	}
 	if resolved.Header.LinkedIn != "" {
-		addContact("LinkedIn", resolved.Header.LinkedIn)
-	}
-	for _, credential := range resolved.Header.Credentials {
-		addContact(credential, "")
+		profiles = append(profiles, "LinkedIn")
+		if target := headerHTTPSURL(resolved.Header.LinkedIn); target != "" {
+			profileLinks = append(profileLinks, headerLinkTarget{label: "LinkedIn", target: target})
+		}
 	}
 	for _, link := range resolved.Header.Portfolio {
-		addContact(link.Label, link.URL)
-	}
-	itemsPerRow := 3
-	if !r.contactCompact {
-		itemsPerRow = 1
-	}
-	for start := 0; start < len(contact); start += itemsPerRow {
-		if start > 0 {
-			addHeaderSpacer(m, 0.8)
+		if strings.TrimSpace(link.Label) != "" {
+			profiles = append(profiles, link.Label)
+			if target := headerHTTPSURL(link.URL); target != "" {
+				profileLinks = append(profileLinks, headerLinkTarget{label: strings.TrimSpace(link.Label), target: target})
+			}
 		}
-		end := min(start+itemsPerRow, len(contact))
-		m.AddAutoRow(r.contactRow(contact[start:end], black)...)
 	}
 
-	positioning := false
-	if resolved.Headline != "" {
-		addHeaderSpacer(m, 2)
-		m.AddAutoRow(col.New(12).Add(r.text(resolved.Headline, r.regular, fontstyle.Normal, r.bodySize, align.Center, 0, 0)))
-		positioning = true
+	rowAdded := false
+	if contact != "" {
+		contactLinks := []headerLinkTarget{}
+		if email := strings.TrimSpace(resolved.Header.Email); email != "" {
+			contactLinks = append(contactLinks, headerLinkTarget{label: email, target: "mailto:" + email})
+		}
+		m.AddRows(row.New(5).Add(col.New(12).Add(r.headerContactRow(contact, black, contactLinks))))
+		rowAdded = true
 	}
-	targetText := joinNonEmpty(" — ", resolved.Target.Company, resolved.Target.Role)
-	if targetText != "" {
-		if positioning {
+	profileRow := joinNonEmpty(" · ", profiles...)
+	if profileRow != "" {
+		if rowAdded {
 			addHeaderSpacer(m, 0.8)
-		} else {
-			addHeaderSpacer(m, 2)
 		}
-		var target core.Component
-		if resolved.Target.URL != "" {
-			target = r.linkAligned(targetText, resolved.Target.URL, r.bodySize, align.Center)
-		} else {
-			target = r.text(targetText, r.regular, fontstyle.Normal, r.bodySize, align.Center, 0, 0)
-		}
-		m.AddAutoRow(col.New(12).Add(target))
-		positioning = true
-	}
-	if resolved.Target.Notes != "" {
-		if positioning {
-			addHeaderSpacer(m, 0.8)
-		} else {
-			addHeaderSpacer(m, 2)
-		}
-		m.AddAutoRow(col.New(12).Add(r.text(resolved.Target.Notes, r.regular, fontstyle.Normal, r.bodySize, align.Center, 0, 0)))
-		positioning = true
+		m.AddRows(row.New(5).Add(col.New(12).Add(r.headerContactRow(profileRow, black, profileLinks))))
 	}
 
-	addHeaderSpacer(m, 3.5)
+	addHeaderSpacer(m, 2.5)
 	m.AddAutoRow(col.New(12).Add(line.New(props.Line{
 		Color: &props.Color{Red: 160, Green: 160, Blue: 160}, Style: linestyle.Solid,
 		Thickness: 0.25, Orientation: orientation.Horizontal, SizePercent: 100,
 	})))
-	addHeaderSpacer(m, 3)
+	addHeaderSpacer(m, 4)
 }
 
-func (r *renderer) contactRow(items []contactItem, separatorColor *props.Color) []core.Col {
-	if len(items) == 1 {
-		return []core.Col{col.New(12).Add(r.contactComponent(items[0], align.Center))}
-	}
+func (r *renderer) headerContactRow(value string, color *props.Color, links []headerLinkTarget) core.Component {
+	font := props.Font{Family: r.regular, Style: fontstyle.Normal, Size: r.contactSize, Color: color}
+	component := r.textWithColor(value, font.Family, font.Style, font.Size, align.Left, 0, 0, 0, color)
+	return &headerContactRow{renderer: r, component: component, value: value, font: font, links: links}
+}
 
-	sizes := contactSegmentSizes(items)
-	columns := make([]core.Col, 0, len(sizes)+2)
-	columns = append(columns, col.New(1))
-	segment := 0
-	for i, item := range items {
-		if i > 0 {
-			columns = append(columns, col.New(sizes[segment]).Add(r.textWithColor(" | ", r.regular, fontstyle.Normal, r.contactSize, align.Center, 0, 0, 0, separatorColor)))
-			segment++
+func (r *renderer) measureHeaderLinks(value string, startX, startY float64, font props.Font, lineHeight float64, links []headerLinkTarget) []headerLinkRect {
+	if len(links) == 0 {
+		return nil
+	}
+	pdf := headerTextMetrics(font)
+
+	searchFrom := 0
+	result := make([]headerLinkRect, 0, len(links))
+	for _, link := range links {
+		if link.label == "" || link.target == "" || searchFrom > len(value) {
+			continue
 		}
-		columns = append(columns, col.New(sizes[segment]).Add(r.contactComponent(item, align.Center)))
-		segment++
+		relativeStart := strings.Index(value[searchFrom:], link.label)
+		if relativeStart < 0 {
+			continue
+		}
+		start := searchFrom + relativeStart
+		end := start + len(link.label)
+		result = append(result, headerLinkRect{
+			x:      startX + pdf.GetStringWidth(value[:start]),
+			y:      startY,
+			width:  pdf.GetStringWidth(link.label),
+			height: lineHeight,
+			start:  start,
+			end:    end,
+			target: link.target,
+		})
+		searchFrom = end
 	}
-	columns = append(columns, col.New(1))
-	return columns
+	return result
 }
 
-func (r *renderer) contactComponent(item contactItem, textAlign align.Type) core.Component {
-	if item.href != "" {
-		return r.linkAligned(item.label, item.href, r.contactSize, textAlign)
+func headerTextMetrics(font props.Font) *gofpdf.Fpdf {
+	pdf := gofpdf.New("P", "mm", "Letter", "")
+	pdf.AddUTF8FontFromBytes(font.Family, "", goregular.TTF)
+	pdf.SetFont(font.Family, "", font.Size)
+	return pdf
+}
+
+func addHeaderLinkAnnotations(pdfBytes []byte, links []headerLinkRect, pageHeight float64) ([]byte, error) {
+	const pointsPerMillimeter = 72.0 / 25.4
+	for i, link := range links {
+		rect := pdftypes.NewRectangle(
+			link.x*pointsPerMillimeter,
+			(pageHeight-link.y-link.height)*pointsPerMillimeter,
+			(link.x+link.width)*pointsPerMillimeter,
+			(pageHeight-link.y)*pointsPerMillimeter,
+		)
+		annotation := model.NewLinkAnnotation(*rect, 0, "", fmt.Sprintf("header-link-%d", i+1), "", 0, nil, nil, link.target, nil, false, 0, model.BSSolid)
+		var annotated bytes.Buffer
+		if err := api.AddAnnotations(
+			context.Background(), bytes.NewReader(pdfBytes), &annotated, []string{"1"}, annotation, model.NewDefaultConfiguration(),
+		); err != nil {
+			return nil, err
+		}
+		pdfBytes = annotated.Bytes()
 	}
-	return r.text(item.label, r.regular, fontstyle.Normal, r.contactSize, textAlign, 0, 0)
+	return pdfBytes, nil
+}
+
+func headerHTTPSURL(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	switch {
+	case strings.HasPrefix(strings.ToLower(value), "https://"):
+		return value
+	case strings.HasPrefix(strings.ToLower(value), "http://"):
+		return "https://" + value[len("http://"):]
+	case strings.HasPrefix(value, "//"):
+		return "https:" + value
+	default:
+		return "https://" + strings.TrimLeft(value, "/")
+	}
 }
 
 func addHeaderSpacer(m core.Maroto, height float64) {
@@ -661,47 +762,6 @@ func (r *renderer) addEntryGap(m core.Maroto, gap float64) {
 	if gap > 0 {
 		m.AddRows(row.New(gap).Add(col.New(12)))
 	}
-}
-
-func contactSegmentSizes(items []contactItem) []int {
-	segmentCount := len(items)*2 - 1
-	if segmentCount <= 0 {
-		return nil
-	}
-	sizes := make([]int, segmentCount)
-	weights := make([]int, segmentCount)
-	totalWeight := 0
-	for i, item := range items {
-		segment := i * 2
-		weights[segment] = len([]rune(item.label))
-		totalWeight += weights[segment]
-		if i > 0 {
-			weights[segment-1] = 3
-			totalWeight += weights[segment-1]
-		}
-	}
-	if totalWeight == 0 {
-		return sizes
-	}
-	remaining := 10 - segmentCount
-	remainders := make([]int, segmentCount)
-	assigned := 0
-	for i, weight := range weights {
-		sizes[i] = 1 + remaining*weight/totalWeight
-		remainders[i] = remaining * weight % totalWeight
-		assigned += sizes[i] - 1
-	}
-	for i := 0; i < remaining-assigned; i++ {
-		best := 0
-		for j := 1; j < len(remainders); j++ {
-			if remainders[j] > remainders[best] {
-				best = j
-			}
-		}
-		sizes[best]++
-		remainders[best] = -1
-	}
-	return sizes
 }
 
 func (r *renderer) addRows(m core.Maroto, rows [][]core.Component) {

@@ -16,6 +16,9 @@ import (
 	"github.com/ledongthuc/pdf"
 	"github.com/pdfcpu/pdfcpu/pkg/api"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
+	pdftypes "github.com/pdfcpu/pdfcpu/pkg/pdfcpu/types"
+	"github.com/phpdave11/gofpdf"
+	"golang.org/x/image/font/gofont/goregular"
 )
 
 func TestRender_EmbeddedFontsMetadataLinksAndPagination(t *testing.T) {
@@ -62,13 +65,13 @@ func TestRender_EmbeddedFontsMetadataLinksAndPagination(t *testing.T) {
 	if result.PageCount < 2 {
 		t.Errorf("expected long content to paginate, got %d page(s)", result.PageCount)
 	}
-	for _, marker := range [][]byte{
-		[]byte("/FontFile2"), []byte("/ToUnicode"),
-		[]byte("https://github.com/ada"),
-	} {
-		if !bytes.Contains(result.PDF, marker) {
-			t.Errorf("generated PDF is missing %q", marker)
-		}
+	assertPDFHasEmbeddedUnicodeFont(t, result.PDF)
+	pageNumbers := make([]string, result.PageCount)
+	for i := range pageNumbers {
+		pageNumbers[i] = fmt.Sprint(i + 1)
+	}
+	if _, ok := pdfURIAnnotations(t, result.PDF, pageNumbers...)["https://example.com/acme"]; !ok {
+		t.Error("generated PDF is missing the employer link annotation")
 	}
 	info, err := api.PDFInfo(context.Background(), bytes.NewReader(result.PDF), "resume.pdf", nil, false, model.NewDefaultConfiguration())
 	if err != nil {
@@ -89,7 +92,7 @@ func TestRender_EmbeddedFontsMetadataLinksAndPagination(t *testing.T) {
 	}
 }
 
-func TestRender_HeaderRowsAreCenteredAndCompact(t *testing.T) {
+func TestRender_HeaderRowsAreLeftAlignedAndCompact(t *testing.T) {
 	standard, err := resumeTemplate.Standard()
 	if err != nil {
 		t.Fatal(err)
@@ -101,9 +104,10 @@ func TestRender_HeaderRowsAreCenteredAndCompact(t *testing.T) {
 			LinkedIn: "https://linkedin.com/in/example", Credentials: []string{"U.S. work authorization"},
 			Portfolio: []schema.Link{{Label: "Engineering portfolio", URL: "https://example.com/alex"}},
 		},
-		Target:   schema.Target{Company: "Northstar Analytics", Role: "Staff Platform Engineer"},
+		Target:   schema.Target{Company: "Northstar Analytics", Role: "Staff Platform Engineer", Notes: "Sample target-specific resume."},
 		Headline: "Staff platform engineer building reliable infrastructure",
 		Summary:  &resolve.ResolvedSummary{Text: "A concise professional summary."},
+		Metadata: schema.PDFMeta{Title: "Alex Morgan – Northstar Staff Platform Engineer"},
 		Sections: []string{"summary"},
 	}
 	result, err := Render(resolved, standard)
@@ -111,7 +115,7 @@ func TestRender_HeaderRowsAreCenteredAndCompact(t *testing.T) {
 		t.Fatal(err)
 	}
 	texts := extractTextItems(t, result.PDF)
-	pageWidth := standard.Page.Width * 72 / 25.4
+	assertPDFHasTextColor(t, result.PDF, standard.Colors.Link)
 	pageHeight := standard.Page.Height * 72 / 25.4
 	name := findTextItem(t, texts, "Alex Morgan")
 	if name.FontSize != 25 {
@@ -120,61 +124,258 @@ func TestRender_HeaderRowsAreCenteredAndCompact(t *testing.T) {
 	if name.Y < pageHeight-50 {
 		t.Errorf("name starts too far below the top of the page: y=%v of %v pt", name.Y, pageHeight)
 	}
-	assertPDFLineCentered(t, texts, name.Y, pageWidth)
+	contentLeft := standard.Margins.Left * 72 / 25.4
+	contentRight := (standard.Page.Width - standard.Margins.Right) * 72 / 25.4
+	assertPDFLineStartsAt(t, texts, name.Y, contentLeft)
 
-	phone := findTextItem(t, texts, "+1-206-555-0142")
-	email := findTextItem(t, texts, "alex.morgan@example.com")
-	location := findTextItem(t, texts, "Seattle, WA")
-	github := findTextItem(t, texts, "GitHub")
-	linkedin := findTextItem(t, texts, "LinkedIn")
-	credential := findTextItem(t, texts, "U.S. work authorization")
-	portfolio := findTextItem(t, texts, "Engineering portfolio")
-	if abs(phone.Y-email.Y) > 1 || abs(phone.Y-location.Y) > 1 {
-		t.Errorf("phone, email, and location should share the first contact row: phone=%+v email=%+v location=%+v", phone, email, location)
+	firstContactRow := findTextItem(t, texts, "+1-206-555-0142 · ")
+	secondContactRow := findTextItem(t, texts, "GitHub")
+	if got := textAtY(texts, firstContactRow.Y); got != "+1-206-555-0142 · alex.morgan@example.com · Seattle, WA" {
+		t.Errorf("unexpected first contact row text %q", got)
 	}
-	if abs(github.Y-linkedin.Y) > 1 || abs(github.Y-credential.Y) > 1 {
-		t.Errorf("social links and credentials should share the second contact row: GitHub=%+v LinkedIn=%+v credential=%+v", github, linkedin, credential)
+	if got := textAtY(texts, secondContactRow.Y); got != "GitHub · LinkedIn · Engineering portfolio" {
+		t.Errorf("unexpected second contact row text %q", got)
 	}
-	if !(phone.Y > github.Y && github.Y > portfolio.Y) {
-		t.Errorf("contact fields should wrap into centered rows in order: phone=%+v GitHub=%+v portfolio=%+v", phone, github, portfolio)
+	for _, item := range []pdf.Text{firstContactRow, secondContactRow} {
+		if item.FontSize != 10 {
+			t.Errorf("expected 10 pt contact text for %q, got %v pt", item.S, item.FontSize)
+		}
 	}
-	for _, lineY := range []float64{phone.Y, github.Y, portfolio.Y} {
-		assertPDFLineCentered(t, texts, lineY, pageWidth)
+	if abs(firstContactRow.X-contentLeft) > 1 || abs(secondContactRow.X-contentLeft) > 1 {
+		t.Errorf("contact rows should start at the content margin: first=%+v second=%+v margin=%v", firstContactRow, secondContactRow, contentLeft)
+	}
+	annotations := headerLinkAnnotations(t, result.PDF)
+	for _, uri := range []string{
+		"mailto:alex.morgan@example.com",
+		"https://github.com/example",
+		"https://linkedin.com/in/example",
+		"https://example.com/alex",
+	} {
+		annotation, ok := annotations[uri]
+		if !ok {
+			t.Errorf("generated PDF is missing header link annotation for %q", uri)
+			continue
+		}
+		if !annotation.Rectangle().Visible() || annotation.Border {
+			t.Errorf("header link %q should have a clickable rectangle without a visible border: %+v", uri, annotation)
+		}
+	}
+	emailRect := annotations["mailto:alex.morgan@example.com"].Rectangle()
+	githubRect := annotations["https://github.com/example"].Rectangle()
+	linkedinRect := annotations["https://linkedin.com/in/example"].Rectangle()
+	portfolioRect := annotations["https://example.com/alex"].Rectangle()
+	if abs(emailRect.LL.Y-firstContactRow.Y) > 2 ||
+		abs(emailRect.LL.X-firstContactRow.X-headerTextWidthPoints("+1-206-555-0142 · ")) > 0.1 ||
+		abs(emailRect.Width()-headerTextWidthPoints("alex.morgan@example.com")) > 0.1 || emailRect.UR.X >= contentRight {
+		t.Errorf("email annotation should cover the email within the first contact row: rect=%+v row=%+v", emailRect, firstContactRow)
+	}
+	if abs(githubRect.LL.X-secondContactRow.X) > 0.1 ||
+		abs(linkedinRect.LL.X-secondContactRow.X-headerTextWidthPoints("GitHub · ")) > 0.1 ||
+		abs(portfolioRect.LL.X-secondContactRow.X-headerTextWidthPoints("GitHub · LinkedIn · ")) > 0.1 ||
+		abs(githubRect.Width()-headerTextWidthPoints("GitHub")) > 0.1 ||
+		abs(linkedinRect.Width()-headerTextWidthPoints("LinkedIn")) > 0.1 ||
+		abs(portfolioRect.Width()-headerTextWidthPoints("Engineering portfolio")) > 0.1 {
+		t.Errorf("profile link annotations should follow their labels in the second row: GitHub=%+v LinkedIn=%+v portfolio=%+v row=%+v", githubRect, linkedinRect, portfolioRect, secondContactRow)
+	}
+	if abs(githubRect.LL.Y-linkedinRect.LL.Y) > 1 || abs(linkedinRect.LL.Y-portfolioRect.LL.Y) > 1 || abs(githubRect.LL.Y-secondContactRow.Y) > 2 {
+		t.Errorf("profile link annotations should cover the second contact row: GitHub=%+v LinkedIn=%+v portfolio=%+v row=%+v", githubRect, linkedinRect, portfolioRect, secondContactRow)
+	}
+	if !(name.Y > firstContactRow.Y && firstContactRow.Y > secondContactRow.Y) {
+		t.Errorf("name and contact rows should occupy distinct ordered lines: name=%+v first=%+v second=%+v", name, firstContactRow, secondContactRow)
+	}
+	if name.Y-firstContactRow.Y < 20 || firstContactRow.Y-secondContactRow.Y < 12 {
+		t.Errorf("header rows should have enough vertical separation to avoid overlap: name=%+v first=%+v second=%+v", name, firstContactRow, secondContactRow)
 	}
 
-	headline := findTextItem(t, texts, resolved.Headline)
-	target := findTextItem(t, texts, "Northstar Analytics")
 	section := findTextItem(t, texts, "SUMMARY")
-	assertPDFLineCentered(t, texts, headline.Y, pageWidth)
-	assertPDFLineCentered(t, texts, target.Y, pageWidth)
-	if !(portfolio.Y > headline.Y && headline.Y > section.Y) {
-		t.Errorf("headline and first section should follow the contact rows in normal flow: portfolio=%+v headline=%+v section=%+v", portfolio, headline, section)
+	if !(secondContactRow.Y > section.Y) {
+		t.Errorf("first section should follow the contact rows in normal flow: contacts=%+v section=%+v", secondContactRow, section)
 	}
-	if headline.Y-section.Y > 80 {
-		t.Errorf("first section starts too far below the headline: gap=%v pt", headline.Y-section.Y)
+	if secondContactRow.Y-section.Y > 35 {
+		t.Errorf("first section starts too far below the contact rows: gap=%v pt", secondContactRow.Y-section.Y)
+	}
+	visibleItems := make([]string, len(texts))
+	for i, item := range texts {
+		visibleItems[i] = item.S
+	}
+	visibleText := strings.Join(visibleItems, "\n")
+	for _, forbidden := range []string{
+		resolved.Target.Company, resolved.Target.Role, resolved.Target.Notes,
+		resolved.Headline, resolved.Metadata.Title, "U.S. work authorization",
+	} {
+		if forbidden == "" {
+			continue
+		}
+		if strings.Contains(visibleText, forbidden) {
+			t.Errorf("header-only target or credential text %q should not be visible in the resume", forbidden)
+		}
 	}
 }
 
-func assertPDFLineCentered(t *testing.T, texts []pdf.Text, y, pageWidth float64) {
+func headerLinkAnnotations(t *testing.T, pdfBytes []byte) map[string]model.LinkAnnotation {
 	t.Helper()
-	minX, maxX := pageWidth, 0.0
+	return pdfURIAnnotations(t, pdfBytes, "1")
+}
+
+func assertPDFHasTextColor(t *testing.T, pdfBytes []byte, hexColor string) {
+	t.Helper()
+	color := parseColor(hexColor, nil)
+	expected := []byte(fmt.Sprintf("%.3f %.3f %.3f rg", float64(color.Red)/255, float64(color.Green)/255, float64(color.Blue)/255))
+	ctx, err := api.ReadContext(context.Background(), bytes.NewReader(pdfBytes), model.NewDefaultConfiguration())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := api.ValidateContext(context.Background(), ctx); err != nil {
+		t.Fatal(err)
+	}
+	page, _, _, err := ctx.PageDict(context.Background(), 1, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	contents, err := ctx.Dereference(page["Contents"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var streams []pdftypes.StreamDict
+	switch content := contents.(type) {
+	case pdftypes.StreamDict:
+		streams = append(streams, content)
+	case *pdftypes.StreamDict:
+		streams = append(streams, *content)
+	case pdftypes.Array:
+		for _, object := range content {
+			stream, err := ctx.Dereference(object)
+			if err != nil {
+				t.Fatal(err)
+			}
+			switch stream := stream.(type) {
+			case pdftypes.StreamDict:
+				streams = append(streams, stream)
+			case *pdftypes.StreamDict:
+				streams = append(streams, *stream)
+			}
+		}
+	default:
+		t.Fatalf("unexpected page content type %T", contents)
+	}
+	for i := range streams {
+		if err := streams[i].Decode(); err != nil {
+			t.Fatal(err)
+		}
+		if bytes.Contains(streams[i].Content, expected) {
+			return
+		}
+	}
+	t.Errorf("generated PDF is missing configured link text color %q", expected)
+}
+
+func pdfURIAnnotations(t *testing.T, pdfBytes []byte, pages ...string) map[string]model.LinkAnnotation {
+	t.Helper()
+	pageAnnotations, err := api.Annotations(context.Background(), bytes.NewReader(pdfBytes), pages, model.NewDefaultConfiguration())
+	if err != nil {
+		t.Fatal(err)
+	}
+	links := make(map[string]model.LinkAnnotation)
+	for _, page := range pageAnnotations {
+		for _, annotation := range page[model.AnnLink].Map {
+			link, ok := annotation.(model.LinkAnnotation)
+			if !ok {
+				if pointer, pointerOK := annotation.(*model.LinkAnnotation); pointerOK {
+					link = *pointer
+					ok = true
+				}
+			}
+			if ok {
+				links[link.URI] = link
+			}
+		}
+	}
+	return links
+}
+
+func assertPDFHasEmbeddedUnicodeFont(t *testing.T, pdfBytes []byte) {
+	t.Helper()
+	ctx, err := api.ReadContext(context.Background(), bytes.NewReader(pdfBytes), model.NewDefaultConfiguration())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := api.ValidateContext(context.Background(), ctx); err != nil {
+		t.Fatal(err)
+	}
+	page, _, _, err := ctx.PageDict(context.Background(), 1, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resources, err := ctx.DereferenceDict(page["Resources"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	fonts, err := ctx.DereferenceDict(resources["Font"])
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	hasToUnicode := false
+	hasFontFile2 := false
+	checkFontDescriptor := func(font pdftypes.Dict) {
+		fontDescriptor, ok := font.Find("FontDescriptor")
+		if !ok {
+			return
+		}
+		descriptor, err := ctx.DereferenceDict(fontDescriptor)
+		if err != nil {
+			t.Errorf("read embedded font descriptor: %v", err)
+			return
+		}
+		hasFontFile2 = hasFontFile2 || descriptor.HasEntry("FontFile2")
+	}
+	for _, fontObject := range fonts {
+		font, err := ctx.DereferenceDict(fontObject)
+		if err != nil {
+			t.Errorf("read font dictionary: %v", err)
+			continue
+		}
+		hasToUnicode = hasToUnicode || font.HasEntry("ToUnicode")
+		checkFontDescriptor(font)
+		for _, descendantObject := range font.ArrayEntry("DescendantFonts") {
+			descendant, err := ctx.DereferenceDict(descendantObject)
+			if err != nil {
+				t.Errorf("read descendant font dictionary: %v", err)
+				continue
+			}
+			checkFontDescriptor(descendant)
+		}
+	}
+	if !hasToUnicode {
+		t.Error("generated PDF has no ToUnicode font mapping")
+	}
+	if !hasFontFile2 {
+		t.Error("generated PDF has no embedded TrueType font")
+	}
+}
+
+func headerTextWidthPoints(value string) float64 {
+	pdf := gofpdf.New("P", "mm", "Letter", "")
+	pdf.AddUTF8FontFromBytes(defaultFontFamily, "", goregular.TTF)
+	pdf.SetFont(defaultFontFamily, "", 10)
+	return pdf.GetStringWidth(value) * 72 / 25.4
+}
+
+func assertPDFLineStartsAt(t *testing.T, texts []pdf.Text, y, expectedX float64) {
+	t.Helper()
+	minX := 1e9
+	found := false
 	for _, item := range texts {
 		if abs(item.Y-y) > 1 {
 			continue
 		}
+		found = true
 		if item.X < minX {
 			minX = item.X
 		}
-		width := item.W
-		if width == 0 {
-			width = float64(len([]rune(item.S))) * item.FontSize * 0.5
-		}
-		if item.X+width > maxX {
-			maxX = item.X + width
-		}
 	}
-	if abs((minX+maxX)/2-pageWidth/2) > 20 {
-		t.Errorf("PDF line is not centered: x=%v..%v of %v pt", minX, maxX, pageWidth)
+	if !found || abs(minX-expectedX) > 1 {
+		t.Errorf("PDF line does not start at the content margin: x=%v, expected=%v", minX, expectedX)
 	}
 }
 
@@ -204,10 +405,13 @@ func TestRender_TextComponentsDoNotOverlap(t *testing.T) {
 	}
 	texts := extractTextItems(t, result.PDF)
 
-	phone := findTextItem(t, texts, "206-555-0142")
-	email := findTextItem(t, texts, "ada@example.com")
-	if abs(phone.Y-email.Y) > 1 || phone.X >= email.X {
-		t.Errorf("compact contact fields overlap: phone=%+v email=%+v", phone, email)
+	contactRow := findTextItem(t, texts, "206-555-0142 · ")
+	if got := textAtY(texts, contactRow.Y); got != "206-555-0142 · ada@example.com" {
+		t.Errorf("unexpected contact row text %q", got)
+	}
+	name := findTextItem(t, texts, "Ada Lovelace")
+	if !(name.Y > contactRow.Y) {
+		t.Errorf("contact row should occupy a separate line below the name: name=%+v contacts=%+v", name, contactRow)
 	}
 	skillHeading := findTextItem(t, texts, "SKILLS")
 	groupName := findTextItem(t, texts, "Platform Engineering")
@@ -413,10 +617,10 @@ func TestStandardTemplateMapsToRendererSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := newRenderer(standard)
-	if r.regular != "ResumeSans" || r.bold != "ResumeSans" || r.nameSize != 25 || r.contactSize != 8 {
+	if r.regular != "ResumeSans" || r.bold != "ResumeSans" || r.nameSize != 25 || r.contactSize != 10 {
 		t.Errorf("font settings were not mapped: %+v", r)
 	}
-	if r.headingAlign != align.Center || !r.contactCompact {
+	if r.headingAlign != align.Left || !boolValue(standard.Header.Compact, false) {
 		t.Errorf("header settings were not mapped: %+v", r)
 	}
 	if r.headingColor.Red != 31 || r.headingColor.Green != 78 || r.headingColor.Blue != 121 {
@@ -552,6 +756,16 @@ func findTextItem(t *testing.T, texts []pdf.Text, value string) pdf.Text {
 	}
 	t.Fatalf("PDF text %q not found in %+v", value, texts)
 	return pdf.Text{}
+}
+
+func textAtY(texts []pdf.Text, y float64) string {
+	var line strings.Builder
+	for _, text := range texts {
+		if abs(text.Y-y) < 0.1 {
+			line.WriteString(text.S)
+		}
+	}
+	return line.String()
 }
 
 func abs(value float64) float64 {
