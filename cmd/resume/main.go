@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/jlpdeveloper/resume-builder/internal/build"
 	"github.com/jlpdeveloper/resume-builder/internal/dependencies"
 	"github.com/jlpdeveloper/resume-builder/internal/diff"
 	"github.com/jlpdeveloper/resume-builder/internal/inspect"
@@ -21,22 +22,15 @@ type command struct {
 
 func commands() map[string]command {
 	return map[string]command{
-		"validate":     {run: validate.Run, usage: "validate PATH"},
-		"inspect":      {run: inspect.Run, usage: "inspect PATH"},
-		"diff":         {run: diff.Run, usage: "diff LEFT RIGHT"},
-		"build":        {run: runStub, usage: "build PATH"},
+		"validate": {run: validate.Run, usage: "validate PATH"},
+		"inspect":  {run: inspect.Run, usage: "inspect PATH"},
+		"diff":     {run: diff.Run, usage: "diff LEFT RIGHT"},
+		"build": {run: func(args []string, stdout, stderr io.Writer, jsonOutput bool) int {
+			return build.Run(args, stdout, stderr, jsonOutput, version)
+		}, usage: "build PATH [--output PDF] [--manifest JSON]"},
 		"dependencies": {run: dependencies.Run, usage: "dependencies PATH"},
 		"version":      {run: runVersion, usage: "version"},
 	}
-}
-
-func runStub(_ []string, _, stderr io.Writer, jsonOutput bool) int {
-	if jsonOutput {
-		_ = json.NewEncoder(stderr).Encode(map[string]string{"error": "not yet implemented"})
-	} else {
-		fmt.Fprintln(stderr, "not yet implemented")
-	}
-	return 1
 }
 
 func runVersion(_ []string, stdout, _ io.Writer, _ bool) int {
