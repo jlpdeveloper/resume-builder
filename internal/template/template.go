@@ -95,7 +95,8 @@ func validateSettings(template *schema.Template) error {
 		value float64
 	}{
 		{"line spacing", template.Spacing.Line}, {"section spacing", template.Spacing.Section},
-		{"role spacing", template.Spacing.RoleGap}, {"bullet spacing", template.Spacing.BulletGap},
+		{"entry spacing", template.Spacing.EntryGap}, {"role spacing", template.Spacing.RoleGap},
+		{"bullet spacing", template.Spacing.BulletGap},
 		{"bullet indent", template.Indent.Bullet}, {"role indent", template.Indent.Role},
 		{"accomplishment indent", template.Indent.Accomp},
 	} {

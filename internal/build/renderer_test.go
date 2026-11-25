@@ -95,6 +95,121 @@ func TestRender_RejectsNilResume(t *testing.T) {
 	}
 }
 
+func TestRender_TextComponentsDoNotOverlap(t *testing.T) {
+	resolved := &resolve.Resolved{
+		Header:   schema.Header{Name: "Ada Lovelace", Phone: "206-555-0142", Email: "ada@example.com"},
+		Sections: []string{"skills", "experience"},
+		Skills: []resolve.ResolvedSkillGroup{{
+			Name: "Platform Engineering", Skills: []string{"Go", "Kubernetes"},
+		}},
+		Experience: []resolve.ResolvedEmployer{{
+			Name: "Acme",
+			Roles: []resolve.ResolvedRole{{
+				Title: "Principal Reliability Engineer", Accomplishments: []string{"Designed reliable systems."},
+			}},
+		}},
+	}
+	result, err := Render(resolved, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	texts := extractTextItems(t, result.PDF)
+
+	phone := findTextItem(t, texts, "206-555-0142")
+	email := findTextItem(t, texts, "ada@example.com")
+	if abs(phone.Y-email.Y) > 1 || phone.X >= email.X {
+		t.Errorf("compact contact fields overlap: phone=%+v email=%+v", phone, email)
+	}
+	skillHeading := findTextItem(t, texts, "SKILLS")
+	groupName := findTextItem(t, texts, "Platform Engineering")
+	groupSkills := findTextItem(t, texts, "Go, Kubernetes")
+	if !(skillHeading.Y > groupName.Y && groupName.Y > groupSkills.Y) {
+		t.Errorf("skill group is not ordered below its heading: heading=%+v name=%+v values=%+v", skillHeading, groupName, groupSkills)
+	}
+	experienceHeading := findTextItem(t, texts, "EXPERIENCE")
+	employer := findTextItem(t, texts, "Acme")
+	role := findTextItem(t, texts, "Principal Reliability Engineer")
+	accomplishment := findTextItem(t, texts, "Designed reliable systems.")
+	if !(experienceHeading.Y > employer.Y && employer.Y > role.Y && role.Y > accomplishment.Y) {
+		t.Errorf("experience entry is not vertically ordered: heading=%+v employer=%+v role=%+v accomplishment=%+v", experienceHeading, employer, role, accomplishment)
+	}
+	for _, text := range texts {
+		if strings.Contains(text.S, "GitHub") || strings.Contains(text.S, "LinkedIn") {
+			t.Errorf("empty social link was rendered: %q", text.S)
+		}
+	}
+}
+
+func TestRender_EntryGapSeparatesContentBlocks(t *testing.T) {
+	resolved := &resolve.Resolved{
+		Header:   schema.Header{Name: "Ada Lovelace"},
+		Sections: []string{"skills"},
+		Skills: []resolve.ResolvedSkillGroup{
+			{Name: "First Group", Skills: []string{"Go"}},
+			{Name: "Second Group", Skills: []string{"Kubernetes"}},
+		},
+	}
+	standard, err := resumeTemplate.Standard()
+	if err != nil {
+		t.Fatal(err)
+	}
+	standard.Spacing.EntryGap = 0
+	withoutGap, err := Render(resolved, standard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	standard.Spacing.EntryGap = 6
+	withGap, err := Render(resolved, standard)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	withoutTexts := extractTextItems(t, withoutGap.PDF)
+	withTexts := extractTextItems(t, withGap.PDF)
+	withoutFirst := findTextItem(t, withoutTexts, "First Group")
+	withoutSecond := findTextItem(t, withoutTexts, "Second Group")
+	withFirst := findTextItem(t, withTexts, "First Group")
+	withSecond := findTextItem(t, withTexts, "Second Group")
+	withoutDistance := withoutFirst.Y - withoutSecond.Y
+	withDistance := withFirst.Y - withSecond.Y
+	if withDistance <= withoutDistance {
+		t.Errorf("configured entry gap did not increase space between groups: without=%v with=%v", withoutDistance, withDistance)
+	}
+}
+
+func TestRender_SectionRuleHasGapBeforeContent(t *testing.T) {
+	resolved := &resolve.Resolved{
+		Header:   schema.Header{Name: "Ada Lovelace"},
+		Sections: []string{"skills"},
+		Skills: []resolve.ResolvedSkillGroup{{
+			Name: "Platform Engineering", Skills: []string{"Go"},
+		}},
+	}
+	standard, err := resumeTemplate.Standard()
+	if err != nil {
+		t.Fatal(err)
+	}
+	showRule := false
+	standard.Headings.Rule = &showRule
+	withoutRule, err := Render(resolved, standard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	showRule = true
+	withRule, err := Render(resolved, standard)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	withoutTexts := extractTextItems(t, withoutRule.PDF)
+	withTexts := extractTextItems(t, withRule.PDF)
+	withoutGap := findTextItem(t, withoutTexts, "SKILLS").Y - findTextItem(t, withoutTexts, "Platform Engineering").Y
+	withGap := findTextItem(t, withTexts, "SKILLS").Y - findTextItem(t, withTexts, "Platform Engineering").Y
+	if withGap-withoutGap < 2.5 {
+		t.Errorf("section rule does not have the expected 2 mm gap before content: without=%v with=%v", withoutGap, withGap)
+	}
+}
+
 func TestStandardTemplateMapsToRendererSettings(t *testing.T) {
 	standard, err := resumeTemplate.Standard()
 	if err != nil {
@@ -203,6 +318,50 @@ func extractPages(t *testing.T, data []byte) []string {
 		pages = append(pages, text)
 	}
 	return pages
+}
+
+func extractTextItems(t *testing.T, data []byte) []pdf.Text {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "resume.pdf")
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	pdfFile, reader, err := pdf.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pdfFile.Close()
+	items := reader.Page(1).Content().Text
+	runs := make([]pdf.Text, 0, len(items))
+	for _, item := range items {
+		if len(runs) > 0 {
+			last := &runs[len(runs)-1]
+			if last.Font == item.Font && last.FontSize == item.FontSize && last.X == item.X && last.Y == item.Y {
+				last.S += item.S
+				continue
+			}
+		}
+		runs = append(runs, item)
+	}
+	return runs
+}
+
+func findTextItem(t *testing.T, texts []pdf.Text, value string) pdf.Text {
+	t.Helper()
+	for _, text := range texts {
+		if strings.Contains(text.S, value) {
+			return text
+		}
+	}
+	t.Fatalf("PDF text %q not found in %+v", value, texts)
+	return pdf.Text{}
+}
+
+func abs(value float64) float64 {
+	if value < 0 {
+		return -value
+	}
+	return value
 }
 
 func pageContaining(pages []string, value string) int {

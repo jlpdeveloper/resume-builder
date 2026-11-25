@@ -11,6 +11,7 @@ import (
 	"github.com/jlpdeveloper/resume-builder/internal/resolve"
 	"github.com/jlpdeveloper/resume-builder/internal/schema"
 	resumeTemplate "github.com/jlpdeveloper/resume-builder/internal/template"
+	"github.com/johnfercher/go-tree/node"
 	"github.com/johnfercher/maroto/v2"
 	"github.com/johnfercher/maroto/v2/pkg/components/col"
 	"github.com/johnfercher/maroto/v2/pkg/components/line"
@@ -75,6 +76,64 @@ type renderer struct {
 type itemBlock struct {
 	first []core.Component
 	rest  [][]core.Component
+}
+
+type contactItem struct {
+	label string
+	href  string
+}
+
+type verticalStack struct {
+	components []core.Component
+}
+
+type verticalSpacer struct {
+	height float64
+}
+
+func (*verticalSpacer) GetStructure() *node.Node[core.Structure] {
+	return node.New(core.Structure{Type: "vertical_spacer"})
+}
+
+func (*verticalSpacer) SetConfig(*entity.Config) {}
+
+func (s *verticalSpacer) GetHeight(_ core.Provider, _ *entity.Cell) float64 {
+	return s.height
+}
+
+func (*verticalSpacer) Render(_ core.Provider, _ *entity.Cell) {}
+
+func (s *verticalStack) GetStructure() *node.Node[core.Structure] {
+	structure := node.New(core.Structure{Type: "vertical_stack"})
+	for _, component := range s.components {
+		structure.AddNext(component.GetStructure())
+	}
+	return structure
+}
+
+func (s *verticalStack) SetConfig(config *entity.Config) {
+	for _, component := range s.components {
+		component.SetConfig(config)
+	}
+}
+
+func (s *verticalStack) GetHeight(provider core.Provider, cell *entity.Cell) float64 {
+	height := 0.0
+	for _, component := range s.components {
+		height += component.GetHeight(provider, cell)
+	}
+	return height
+}
+
+func (s *verticalStack) Render(provider core.Provider, cell *entity.Cell) {
+	current := cell.Copy()
+	for _, component := range s.components {
+		height := component.GetHeight(provider, &current)
+		componentCell := current.Copy()
+		componentCell.Height = height
+		component.Render(provider, &componentCell)
+		current.Y += height
+	}
 }
 
 // Render generates a selectable-text PDF using the supplied template settings.
@@ -157,12 +216,13 @@ func renderAt(resolved *resolve.Resolved, template *schema.Template, generatedAt
 		}
 		lastSection = section
 		heading := sectionHeading(section, r.template.Headings.Uppercase)
-		headingRow := []core.Component{r.textWithColor(heading, r.bold, fontstyle.Bold, r.headingSize, align.Left, 0, r.template.Spacing.Section, r.headingColor)}
+		headingRow := []core.Component{r.textWithColor(heading, r.bold, fontstyle.Bold, r.headingSize, align.Left, 0, r.template.Spacing.Section, 1, r.headingColor)}
 		if boolValue(r.template.Headings.Rule, false) {
 			headingRow = append(headingRow, line.New(props.Line{
 				Color: r.ruleColor, Style: linestyle.Solid, Thickness: positive(r.template.Headings.RuleSize, 0.2),
 				Orientation: orientation.Horizontal, SizePercent: 100,
 			}))
+			headingRow = append(headingRow, &verticalSpacer{height: 2})
 		}
 		if boolValue(r.template.PageBreaks.KeepHeadingWithContent, true) {
 			headingRow = append(headingRow, blocks[0].first...)
@@ -173,6 +233,7 @@ func renderAt(resolved *resolve.Resolved, template *schema.Template, generatedAt
 		}
 		r.addRows(m, blocks[0].rest)
 		for _, block := range blocks[1:] {
+			r.addEntryGap(m)
 			r.addRow(m, block.first)
 			r.addRows(m, block.rest)
 		}
@@ -306,31 +367,51 @@ func isPDFWhitespace(value byte) bool {
 func (r *renderer) renderHeader(m core.Maroto, resolved *resolve.Resolved) {
 	m.AddAutoRow(col.New(12).Add(r.text(resolved.Header.Name, r.bold, fontstyle.Bold, r.nameSize, r.headingAlign, 0, 0)))
 
-	contact := make([]core.Component, 0, 12)
+	contact := make([]contactItem, 0, 6+len(resolved.Header.Portfolio))
 	addContact := func(label, href string) {
-		if r.contactCompact && len(contact) > 0 {
-			contact = append(contact, r.text(" | ", r.regular, fontstyle.Normal, r.contactSize, align.Center, 0, 0))
-		}
-		if href != "" {
-			contact = append(contact, r.link(label, href, r.contactSize))
-		} else if label != "" {
-			contact = append(contact, r.text(label, r.regular, fontstyle.Normal, r.contactSize, align.Center, 0, 0))
+		if strings.TrimSpace(label) != "" {
+			contact = append(contact, contactItem{label: label, href: href})
 		}
 	}
 	addContact(resolved.Header.Phone, "")
 	addContact(resolved.Header.Email, "mailto:"+resolved.Header.Email)
 	addContact(resolved.Header.Location, "")
-	addContact("GitHub", resolved.Header.GitHub)
-	addContact("LinkedIn", resolved.Header.LinkedIn)
+	if resolved.Header.GitHub != "" {
+		addContact("GitHub", resolved.Header.GitHub)
+	}
+	if resolved.Header.LinkedIn != "" {
+		addContact("LinkedIn", resolved.Header.LinkedIn)
+	}
 	for _, link := range resolved.Header.Portfolio {
 		addContact(link.Label, link.URL)
 	}
 	if len(contact) > 0 {
-		if r.contactCompact {
-			m.AddAutoRow(col.New(12).Add(contact...))
+		if r.contactCompact && len(contact) <= 12 {
+			sizes := contactColumnSizes(contact)
+			columns := make([]core.Col, 0, len(contact))
+			for i, item := range contact {
+				label := item.label
+				if i > 0 {
+					label = " | " + label
+				}
+				var component core.Component
+				if item.href != "" {
+					component = r.link(label, item.href, r.contactSize)
+				} else {
+					component = r.text(label, r.regular, fontstyle.Normal, r.contactSize, align.Left, 0, 0)
+				}
+				columns = append(columns, col.New(sizes[i]).Add(component))
+			}
+			m.AddAutoRow(columns...)
 		} else {
 			for _, item := range contact {
-				m.AddAutoRow(col.New(12).Add(item))
+				var component core.Component
+				if item.href != "" {
+					component = r.link(item.label, item.href, r.contactSize)
+				} else {
+					component = r.text(item.label, r.regular, fontstyle.Normal, r.contactSize, align.Left, 0, 0)
+				}
+				m.AddAutoRow(col.New(12).Add(component))
 			}
 		}
 	}
@@ -495,16 +576,16 @@ func (r *renderer) bullet(value string, indent float64) core.Component {
 }
 
 func (r *renderer) text(value, family string, style fontstyle.Type, size float64, textAlign align.Type, left, top float64) core.Component {
-	return r.textWithColor(value, family, style, size, textAlign, left, top, r.textColor)
+	return r.textWithColor(value, family, style, size, textAlign, left, top, 0, r.textColor)
 }
 
-func (r *renderer) textWithColor(value, family string, style fontstyle.Type, size float64, textAlign align.Type, left, top float64, color *props.Color) core.Component {
+func (r *renderer) textWithColor(value, family string, style fontstyle.Type, size float64, textAlign align.Type, left, top, bottom float64, color *props.Color) core.Component {
 	if strings.TrimSpace(value) != "" {
 		r.expectedText = append(r.expectedText, value)
 	}
 	return text.New(value, props.Text{
 		Family: family, Style: style, Size: size, Align: textAlign,
-		Color: color, Left: left, Top: top, VerticalPadding: r.template.Spacing.Line,
+		Color: color, Left: left, Top: top, Bottom: bottom, VerticalPadding: r.template.Spacing.Line,
 	})
 }
 
@@ -521,8 +602,52 @@ func (r *renderer) link(label, target string, size float64) core.Component {
 
 func (r *renderer) addRow(m core.Maroto, components []core.Component) {
 	if len(components) > 0 {
-		m.AddAutoRow(col.New(12).Add(components...))
+		m.AddAutoRow(col.New(12).Add(&verticalStack{components: components}))
 	}
+}
+
+func (r *renderer) addEntryGap(m core.Maroto) {
+	if r.template.Spacing.EntryGap > 0 {
+		m.AddRows(row.New(r.template.Spacing.EntryGap).Add(col.New(12)))
+	}
+}
+
+func contactColumnSizes(items []contactItem) []int {
+	sizes := make([]int, len(items))
+	if len(items) == 0 {
+		return sizes
+	}
+	weights := make([]int, len(items))
+	totalWeight := 0
+	for i, item := range items {
+		weights[i] = len([]rune(item.label))
+		if i > 0 {
+			weights[i] += 3
+		}
+		totalWeight += weights[i]
+	}
+	if totalWeight == 0 {
+		return sizes
+	}
+	remaining := 12 - len(items)
+	remainders := make([]int, len(items))
+	assigned := 0
+	for i, weight := range weights {
+		sizes[i] = 1 + remaining*weight/totalWeight
+		remainders[i] = remaining * weight % totalWeight
+		assigned += sizes[i] - 1
+	}
+	for i := 0; i < remaining-assigned; i++ {
+		best := 0
+		for j := 1; j < len(remainders); j++ {
+			if remainders[j] > remainders[best] {
+				best = j
+			}
+		}
+		sizes[best]++
+		remainders[best] = -1
+	}
+	return sizes
 }
 
 func (r *renderer) addRows(m core.Maroto, rows [][]core.Component) {
