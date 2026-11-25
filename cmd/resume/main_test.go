@@ -12,7 +12,7 @@ import (
 )
 
 func TestExecute_StubCommands(t *testing.T) {
-	stubs := []string{"inspect", "diff", "build", "dependencies"}
+	stubs := []string{"diff", "build", "dependencies"}
 
 	for _, cmd := range stubs {
 		t.Run(cmd, func(t *testing.T) {
@@ -103,6 +103,39 @@ func TestExecute_JsonFlag(t *testing.T) {
 	}
 	if stderr.Len() != 0 {
 		t.Errorf("expected empty stderr, got %q", stderr.String())
+	}
+}
+
+func TestExecute_InspectJSON(t *testing.T) {
+	dir := t.TempDir()
+	profilePath := filepath.Join(dir, "profile.yml")
+	resumePath := filepath.Join(dir, "resume.yml")
+	if err := os.WriteFile(profilePath, []byte("schema: resume/v1\nkind: profile\nid: p1\nheader:\n  name: Alex Example\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(resumePath, []byte("schema: resume/v1\nkind: resume\nid: r1\nprofile: profile.yml\ntarget:\n  company: Acme\n  role: Engineer\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+	os.Args = []string{"resume", "inspect", resumePath, "--json"}
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	if code := execute(stdout, stderr); code != 0 {
+		t.Fatalf("expected successful inspect, got %d: %s", code, stderr.String())
+	}
+	var report struct {
+		Valid  bool `json:"valid"`
+		Target struct {
+			Company string `json:"company"`
+		} `json:"target"`
+	}
+	if err := json.NewDecoder(stdout).Decode(&report); err != nil {
+		t.Fatalf("decode inspect result: %v", err)
+	}
+	if !report.Valid || report.Target.Company != "Acme" {
+		t.Fatalf("unexpected inspect result: %+v", report)
 	}
 }
 

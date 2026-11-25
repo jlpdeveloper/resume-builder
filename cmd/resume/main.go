@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/jlpdeveloper/resume-builder/internal/inspect"
 	"github.com/jlpdeveloper/resume-builder/internal/validate"
 )
 
@@ -19,7 +20,7 @@ type command struct {
 func commands() map[string]command {
 	return map[string]command{
 		"validate":     {run: validate.Run, usage: "validate PATH"},
-		"inspect":      {run: runStub, usage: "inspect PATH"},
+		"inspect":      {run: inspect.Run, usage: "inspect PATH"},
 		"diff":         {run: runStub, usage: "diff LEFT RIGHT"},
 		"build":        {run: runStub, usage: "build PATH"},
 		"dependencies": {run: runStub, usage: "dependencies PATH"},
