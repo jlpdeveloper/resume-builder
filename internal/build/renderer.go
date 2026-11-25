@@ -369,7 +369,9 @@ func isPDFWhitespace(value byte) bool {
 }
 
 func (r *renderer) renderHeader(m core.Maroto, resolved *resolve.Resolved) {
-	m.AddAutoRow(col.New(12).Add(r.text(resolved.Header.Name, r.bold, fontstyle.Bold, r.nameSize, r.headingAlign, 0, 0)))
+	black := &props.Color{Red: 0, Green: 0, Blue: 0}
+	m.AddAutoRow(col.New(12).Add(r.textWithColor(resolved.Header.Name, r.bold, fontstyle.Bold, r.nameSize, align.Center, 0, 0, 0, black)))
+	addHeaderSpacer(m, 1)
 
 	contact := make([]contactItem, 0, 6+len(resolved.Header.Portfolio))
 	addContact := func(label, href string) {
@@ -386,53 +388,94 @@ func (r *renderer) renderHeader(m core.Maroto, resolved *resolve.Resolved) {
 	if resolved.Header.LinkedIn != "" {
 		addContact("LinkedIn", resolved.Header.LinkedIn)
 	}
+	for _, credential := range resolved.Header.Credentials {
+		addContact(credential, "")
+	}
 	for _, link := range resolved.Header.Portfolio {
 		addContact(link.Label, link.URL)
 	}
-	if len(contact) > 0 {
-		if r.contactCompact && len(contact) <= 12 {
-			sizes := contactColumnSizes(contact)
-			columns := make([]core.Col, 0, len(contact))
-			for i, item := range contact {
-				label := item.label
-				if i > 0 {
-					label = " | " + label
-				}
-				var component core.Component
-				if item.href != "" {
-					component = r.link(label, item.href, r.contactSize)
-				} else {
-					component = r.text(label, r.regular, fontstyle.Normal, r.contactSize, align.Left, 0, 0)
-				}
-				columns = append(columns, col.New(sizes[i]).Add(component))
-			}
-			m.AddAutoRow(columns...)
-		} else {
-			for _, item := range contact {
-				var component core.Component
-				if item.href != "" {
-					component = r.link(item.label, item.href, r.contactSize)
-				} else {
-					component = r.text(item.label, r.regular, fontstyle.Normal, r.contactSize, align.Left, 0, 0)
-				}
-				m.AddAutoRow(col.New(12).Add(component))
-			}
+	itemsPerRow := 3
+	if !r.contactCompact {
+		itemsPerRow = 1
+	}
+	for start := 0; start < len(contact); start += itemsPerRow {
+		if start > 0 {
+			addHeaderSpacer(m, 0.8)
 		}
+		end := min(start+itemsPerRow, len(contact))
+		m.AddAutoRow(r.contactRow(contact[start:end], black)...)
 	}
 
-	targetText := resolved.Target.Company + " — " + resolved.Target.Role
-	if resolved.Target.URL != "" {
-		m.AddAutoRow(col.New(12).Add(r.link(targetText, resolved.Target.URL, r.bodySize)))
-	} else {
-		m.AddAutoRow(col.New(12).Add(r.text(targetText, r.regular, fontstyle.Normal, r.bodySize, r.headingAlign, 0, 0)))
-	}
+	positioning := false
 	if resolved.Headline != "" {
-		m.AddAutoRow(col.New(12).Add(r.text(resolved.Headline, r.regular, fontstyle.Normal, r.bodySize, r.headingAlign, 0, 0)))
+		addHeaderSpacer(m, 2)
+		m.AddAutoRow(col.New(12).Add(r.text(resolved.Headline, r.regular, fontstyle.Normal, r.bodySize, align.Center, 0, 0)))
+		positioning = true
+	}
+	targetText := joinNonEmpty(" — ", resolved.Target.Company, resolved.Target.Role)
+	if targetText != "" {
+		if positioning {
+			addHeaderSpacer(m, 0.8)
+		} else {
+			addHeaderSpacer(m, 2)
+		}
+		var target core.Component
+		if resolved.Target.URL != "" {
+			target = r.linkAligned(targetText, resolved.Target.URL, r.bodySize, align.Center)
+		} else {
+			target = r.text(targetText, r.regular, fontstyle.Normal, r.bodySize, align.Center, 0, 0)
+		}
+		m.AddAutoRow(col.New(12).Add(target))
+		positioning = true
 	}
 	if resolved.Target.Notes != "" {
-		m.AddAutoRow(col.New(12).Add(r.text(resolved.Target.Notes, r.regular, fontstyle.Normal, r.bodySize, align.Left, 0, 0)))
+		if positioning {
+			addHeaderSpacer(m, 0.8)
+		} else {
+			addHeaderSpacer(m, 2)
+		}
+		m.AddAutoRow(col.New(12).Add(r.text(resolved.Target.Notes, r.regular, fontstyle.Normal, r.bodySize, align.Center, 0, 0)))
+		positioning = true
 	}
-	m.AddRows(row.New(3).Add(col.New(12)))
+
+	addHeaderSpacer(m, 3.5)
+	m.AddAutoRow(col.New(12).Add(line.New(props.Line{
+		Color: &props.Color{Red: 160, Green: 160, Blue: 160}, Style: linestyle.Solid,
+		Thickness: 0.25, Orientation: orientation.Horizontal, SizePercent: 100,
+	})))
+	addHeaderSpacer(m, 3)
+}
+
+func (r *renderer) contactRow(items []contactItem, separatorColor *props.Color) []core.Col {
+	if len(items) == 1 {
+		return []core.Col{col.New(12).Add(r.contactComponent(items[0], align.Center))}
+	}
+
+	sizes := contactSegmentSizes(items)
+	columns := make([]core.Col, 0, len(sizes)+2)
+	columns = append(columns, col.New(1))
+	segment := 0
+	for i, item := range items {
+		if i > 0 {
+			columns = append(columns, col.New(sizes[segment]).Add(r.textWithColor(" | ", r.regular, fontstyle.Normal, r.contactSize, align.Center, 0, 0, 0, separatorColor)))
+			segment++
+		}
+		columns = append(columns, col.New(sizes[segment]).Add(r.contactComponent(item, align.Center)))
+		segment++
+	}
+	columns = append(columns, col.New(1))
+	return columns
+}
+
+func (r *renderer) contactComponent(item contactItem, textAlign align.Type) core.Component {
+	if item.href != "" {
+		return r.linkAligned(item.label, item.href, r.contactSize, textAlign)
+	}
+	return r.text(item.label, r.regular, fontstyle.Normal, r.contactSize, textAlign, 0, 0)
+}
+
+func addHeaderSpacer(m core.Maroto, height float64) {
+	m.AddRows(row.New(height).Add(col.New(12)))
 }
 
 func (r *renderer) sectionBlocks(section string, resolved *resolve.Resolved) []itemBlock {
@@ -594,13 +637,17 @@ func (r *renderer) textWithColor(value, family string, style fontstyle.Type, siz
 }
 
 func (r *renderer) link(label, target string, size float64) core.Component {
+	return r.linkAligned(label, target, size, align.Left)
+}
+
+func (r *renderer) linkAligned(label, target string, size float64, textAlign align.Type) core.Component {
 	url := target
 	if strings.TrimSpace(label) != "" {
 		r.expectedText = append(r.expectedText, label)
 	}
 	return text.New(label, props.Text{
 		Family: r.regular, Style: fontstyle.Normal, Size: size,
-		Color: r.linkColor, Hyperlink: &url,
+		Color: r.linkColor, Align: textAlign, Hyperlink: &url,
 	})
 }
 
@@ -616,25 +663,28 @@ func (r *renderer) addEntryGap(m core.Maroto, gap float64) {
 	}
 }
 
-func contactColumnSizes(items []contactItem) []int {
-	sizes := make([]int, len(items))
-	if len(items) == 0 {
-		return sizes
+func contactSegmentSizes(items []contactItem) []int {
+	segmentCount := len(items)*2 - 1
+	if segmentCount <= 0 {
+		return nil
 	}
-	weights := make([]int, len(items))
+	sizes := make([]int, segmentCount)
+	weights := make([]int, segmentCount)
 	totalWeight := 0
 	for i, item := range items {
-		weights[i] = len([]rune(item.label))
+		segment := i * 2
+		weights[segment] = len([]rune(item.label))
+		totalWeight += weights[segment]
 		if i > 0 {
-			weights[i] += 3
+			weights[segment-1] = 3
+			totalWeight += weights[segment-1]
 		}
-		totalWeight += weights[i]
 	}
 	if totalWeight == 0 {
 		return sizes
 	}
-	remaining := 12 - len(items)
-	remainders := make([]int, len(items))
+	remaining := 10 - segmentCount
+	remainders := make([]int, segmentCount)
 	assigned := 0
 	for i, weight := range weights {
 		sizes[i] = 1 + remaining*weight/totalWeight

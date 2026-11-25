@@ -89,6 +89,95 @@ func TestRender_EmbeddedFontsMetadataLinksAndPagination(t *testing.T) {
 	}
 }
 
+func TestRender_HeaderRowsAreCenteredAndCompact(t *testing.T) {
+	standard, err := resumeTemplate.Standard()
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved := &resolve.Resolved{
+		Header: schema.Header{
+			Name: "Alex Morgan", Phone: "+1-206-555-0142", Email: "alex.morgan@example.com",
+			Location: "Seattle, WA", GitHub: "https://github.com/example",
+			LinkedIn: "https://linkedin.com/in/example", Credentials: []string{"U.S. work authorization"},
+			Portfolio: []schema.Link{{Label: "Engineering portfolio", URL: "https://example.com/alex"}},
+		},
+		Target:   schema.Target{Company: "Northstar Analytics", Role: "Staff Platform Engineer"},
+		Headline: "Staff platform engineer building reliable infrastructure",
+		Summary:  &resolve.ResolvedSummary{Text: "A concise professional summary."},
+		Sections: []string{"summary"},
+	}
+	result, err := Render(resolved, standard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	texts := extractTextItems(t, result.PDF)
+	pageWidth := standard.Page.Width * 72 / 25.4
+	pageHeight := standard.Page.Height * 72 / 25.4
+	name := findTextItem(t, texts, "Alex Morgan")
+	if name.FontSize != 25 {
+		t.Errorf("expected a 25 pt name, got %v pt", name.FontSize)
+	}
+	if name.Y < pageHeight-50 {
+		t.Errorf("name starts too far below the top of the page: y=%v of %v pt", name.Y, pageHeight)
+	}
+	assertPDFLineCentered(t, texts, name.Y, pageWidth)
+
+	phone := findTextItem(t, texts, "+1-206-555-0142")
+	email := findTextItem(t, texts, "alex.morgan@example.com")
+	location := findTextItem(t, texts, "Seattle, WA")
+	github := findTextItem(t, texts, "GitHub")
+	linkedin := findTextItem(t, texts, "LinkedIn")
+	credential := findTextItem(t, texts, "U.S. work authorization")
+	portfolio := findTextItem(t, texts, "Engineering portfolio")
+	if abs(phone.Y-email.Y) > 1 || abs(phone.Y-location.Y) > 1 {
+		t.Errorf("phone, email, and location should share the first contact row: phone=%+v email=%+v location=%+v", phone, email, location)
+	}
+	if abs(github.Y-linkedin.Y) > 1 || abs(github.Y-credential.Y) > 1 {
+		t.Errorf("social links and credentials should share the second contact row: GitHub=%+v LinkedIn=%+v credential=%+v", github, linkedin, credential)
+	}
+	if !(phone.Y > github.Y && github.Y > portfolio.Y) {
+		t.Errorf("contact fields should wrap into centered rows in order: phone=%+v GitHub=%+v portfolio=%+v", phone, github, portfolio)
+	}
+	for _, lineY := range []float64{phone.Y, github.Y, portfolio.Y} {
+		assertPDFLineCentered(t, texts, lineY, pageWidth)
+	}
+
+	headline := findTextItem(t, texts, resolved.Headline)
+	target := findTextItem(t, texts, "Northstar Analytics")
+	section := findTextItem(t, texts, "SUMMARY")
+	assertPDFLineCentered(t, texts, headline.Y, pageWidth)
+	assertPDFLineCentered(t, texts, target.Y, pageWidth)
+	if !(portfolio.Y > headline.Y && headline.Y > section.Y) {
+		t.Errorf("headline and first section should follow the contact rows in normal flow: portfolio=%+v headline=%+v section=%+v", portfolio, headline, section)
+	}
+	if headline.Y-section.Y > 80 {
+		t.Errorf("first section starts too far below the headline: gap=%v pt", headline.Y-section.Y)
+	}
+}
+
+func assertPDFLineCentered(t *testing.T, texts []pdf.Text, y, pageWidth float64) {
+	t.Helper()
+	minX, maxX := pageWidth, 0.0
+	for _, item := range texts {
+		if abs(item.Y-y) > 1 {
+			continue
+		}
+		if item.X < minX {
+			minX = item.X
+		}
+		width := item.W
+		if width == 0 {
+			width = float64(len([]rune(item.S))) * item.FontSize * 0.5
+		}
+		if item.X+width > maxX {
+			maxX = item.X + width
+		}
+	}
+	if abs((minX+maxX)/2-pageWidth/2) > 20 {
+		t.Errorf("PDF line is not centered: x=%v..%v of %v pt", minX, maxX, pageWidth)
+	}
+}
+
 func TestRender_RejectsNilResume(t *testing.T) {
 	if _, err := Render(nil, nil); err == nil {
 		t.Fatal("expected nil resolved resume to return an error")
@@ -324,7 +413,7 @@ func TestStandardTemplateMapsToRendererSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := newRenderer(standard)
-	if r.regular != "ResumeSans" || r.bold != "ResumeSans" || r.nameSize != 21 || r.contactSize != 8 {
+	if r.regular != "ResumeSans" || r.bold != "ResumeSans" || r.nameSize != 25 || r.contactSize != 8 {
 		t.Errorf("font settings were not mapped: %+v", r)
 	}
 	if r.headingAlign != align.Center || !r.contactCompact {

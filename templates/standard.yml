@@ -7,7 +7,7 @@ page:
   height: 279.4
 
 margins:
-  top: 16
+  top: 4
   bottom: 18
   left: 16
   right: 16
@@ -26,7 +26,7 @@ colors:
   background: "#FFFFFF"
 
 sizes:
-  name: 21
+  name: 25
   contact: 8
   heading: 11
   roleTitle: 9.5
