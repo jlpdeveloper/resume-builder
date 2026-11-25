@@ -38,7 +38,7 @@ spacing:
   section: 6
   entryGap: 3.5
   roleGap: 1.5
-  bulletGap: 0.75
+  bulletGap: 0.5
 
 headings:
   uppercase: true
