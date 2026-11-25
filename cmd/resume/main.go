@@ -5,33 +5,40 @@ import (
 	"fmt"
 	"io"
 	"os"
+
+	"github.com/jlpdeveloper/resume-builder/internal/validate"
 )
 
 const version = "0.1.0"
 
 type command struct {
-	run    func(args []string) error
-	usage  string
-	output string
+	run   func(args []string, stdout, stderr io.Writer, jsonOutput bool) int
+	usage string
 }
 
 func commands() map[string]command {
 	return map[string]command{
-		"validate":     {run: stub, usage: "validate PATH"},
-		"inspect":      {run: stub, usage: "inspect PATH"},
-		"diff":         {run: stub, usage: "diff LEFT RIGHT"},
-		"build":        {run: stub, usage: "build PATH"},
-		"dependencies": {run: stub, usage: "dependencies PATH"},
-		"version":      {run: runVersion, usage: "version", output: "resume " + version + "\n"},
+		"validate":     {run: validate.Run, usage: "validate PATH"},
+		"inspect":      {run: runStub, usage: "inspect PATH"},
+		"diff":         {run: runStub, usage: "diff LEFT RIGHT"},
+		"build":        {run: runStub, usage: "build PATH"},
+		"dependencies": {run: runStub, usage: "dependencies PATH"},
+		"version":      {run: runVersion, usage: "version"},
 	}
 }
 
-func stub(_ []string) error {
-	return fmt.Errorf("not yet implemented")
+func runStub(_ []string, _, stderr io.Writer, jsonOutput bool) int {
+	if jsonOutput {
+		_ = json.NewEncoder(stderr).Encode(map[string]string{"error": "not yet implemented"})
+	} else {
+		fmt.Fprintln(stderr, "not yet implemented")
+	}
+	return 1
 }
 
-func runVersion(_ []string) error {
-	return nil
+func runVersion(_ []string, stdout, _ io.Writer, _ bool) int {
+	fmt.Fprintf(stdout, "resume %s\n", version)
+	return 0
 }
 
 func main() {
@@ -79,21 +86,7 @@ func execute(stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	if err := cmd.run(cmdArgs[1:]); err != nil {
-		if jsonFlag {
-			enc := json.NewEncoder(stderr)
-			enc.Encode(map[string]string{"error": err.Error()})
-		} else {
-			fmt.Fprintln(stderr, err)
-		}
-		return 1
-	}
-
-	if cmd.output != "" {
-		fmt.Fprint(stdout, cmd.output)
-	}
-
-	return 0
+	return cmd.run(cmdArgs[1:], stdout, stderr, jsonFlag)
 }
 
 func printUsageTo(w io.Writer) {

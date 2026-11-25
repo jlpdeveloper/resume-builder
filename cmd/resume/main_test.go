@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/jlpdeveloper/resume-builder/internal/validate"
 )
 
 func TestExecute_StubCommands(t *testing.T) {
-	stubs := []string{"validate", "inspect", "diff", "build", "dependencies"}
+	stubs := []string{"inspect", "diff", "build", "dependencies"}
 
 	for _, cmd := range stubs {
 		t.Run(cmd, func(t *testing.T) {
@@ -82,20 +85,24 @@ func TestExecute_JsonFlag(t *testing.T) {
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
 
-	os.Args = []string{"resume", "validate", "--json"}
+	os.Args = []string{"resume", "validate", filepath.Join(t.TempDir(), "missing.yml"), "--json"}
+	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
 
-	got := execute(nil, stderr)
+	got := execute(stdout, stderr)
 	if got != 1 {
 		t.Errorf("expected exit code 1, got %d", got)
 	}
 
-	var result map[string]string
-	if err := json.NewDecoder(stderr).Decode(&result); err != nil {
-		t.Fatalf("expected valid JSON on stderr, got decode error: %v", err)
+	var result validate.Result
+	if err := json.NewDecoder(stdout).Decode(&result); err != nil {
+		t.Fatalf("expected structured JSON on stdout, got decode error: %v", err)
 	}
-	if _, ok := result["error"]; !ok {
-		t.Error("expected 'error' key in JSON output")
+	if result.Valid || len(result.Errors) == 0 {
+		t.Error("expected invalid result with at least one error")
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("expected empty stderr, got %q", stderr.String())
 	}
 }
 

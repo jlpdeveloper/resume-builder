@@ -13,7 +13,7 @@ import (
 
 // Document holds a parsed YAML file with its resolved path and parsed content.
 type Document struct {
-	Path     string       // Absolute path to the file
+	Path     string // Absolute path to the file
 	Envelope schema.Envelope
 	Kind     schema.Kind
 	Profile  string // File reference to a profile (set for base/resume)
@@ -24,7 +24,7 @@ type Document struct {
 
 // Graph is the result of resolving a file and all its dependencies.
 type Graph struct {
-	Root      string     // Path to the root file that was resolved
+	Root      string // Path to the root file that was resolved
 	Documents []*Document
 }
 
@@ -271,6 +271,14 @@ func (e *CycleError) Cycle() []string {
 	return e.cycle
 }
 
+// FilePath returns the first file in the detected cycle.
+func (e *CycleError) FilePath() string {
+	if len(e.cycle) == 0 {
+		return ""
+	}
+	return e.cycle[0]
+}
+
 // MissingFileError is returned when a referenced file does not exist.
 type MissingFileError struct {
 	path         string
@@ -288,6 +296,11 @@ func (e *MissingFileError) Unwrap() error {
 	return fs.ErrNotExist
 }
 
+// FilePath returns the missing dependency path.
+func (e *MissingFileError) FilePath() string {
+	return e.path
+}
+
 // KindMismatchError is returned when a referenced file has the wrong kind.
 type KindMismatchError struct {
 	path     string
@@ -300,6 +313,11 @@ func (e *KindMismatchError) Error() string {
 		"kind mismatch for %q: expected %q, got %q",
 		e.path, e.expected, e.actual,
 	)
+}
+
+// FilePath returns the path with the unexpected kind.
+func (e *KindMismatchError) FilePath() string {
+	return e.path
 }
 
 // DuplicateIDError is returned when two resolved files share the same ID.
@@ -316,6 +334,11 @@ func (e *DuplicateIDError) Error() string {
 	)
 }
 
+// FilePath returns the file containing the duplicate ID.
+func (e *DuplicateIDError) FilePath() string {
+	return e.path
+}
+
 // UnsupportedSchemaError is returned when a file uses an unsupported schema version.
 type UnsupportedSchemaError struct {
 	path   string
@@ -327,6 +350,11 @@ func (e *UnsupportedSchemaError) Error() string {
 		"unsupported schema version %q in %s (expected %q)",
 		e.schema, e.path, schema.SchemaV1,
 	)
+}
+
+// FilePath returns the file with the unsupported schema version.
+func (e *UnsupportedSchemaError) FilePath() string {
+	return e.path
 }
 
 // EnvelopeError wraps an envelope validation error with the file path.
@@ -343,6 +371,11 @@ func (e *EnvelopeError) Unwrap() error {
 	return e.err
 }
 
+// FilePath returns the file with the invalid envelope.
+func (e *EnvelopeError) FilePath() string {
+	return e.path
+}
+
 // ParseError is returned when a YAML file cannot be parsed.
 type ParseError struct {
 	path string
@@ -355,4 +388,9 @@ func (e *ParseError) Error() string {
 
 func (e *ParseError) Unwrap() error {
 	return e.err
+}
+
+// FilePath returns the file that could not be parsed.
+func (e *ParseError) FilePath() string {
+	return e.path
 }
