@@ -27,7 +27,7 @@ colors:
 
 sizes:
   name: 25
-  contact: 8
+  contact: 10
   heading: 11
   roleTitle: 9.5
   body: 9
@@ -52,7 +52,7 @@ indent:
   accomplishment: 7
 
 headerLayout:
-  align: center
+  align: left
   compact: true
 
 footerLayout:

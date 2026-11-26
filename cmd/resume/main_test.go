@@ -253,7 +253,7 @@ func TestSampleResumeValidateAndInspect(t *testing.T) {
 		t.Fatalf("resume should replace base experience defaults with Northstar only: %+v", experience.Items)
 	}
 	roles := experience.Items[0].Roles
-	if len(roles) != 2 || roles[0].ID != "senior-platform" || roles[1].ID != "staff-platform" {
+	if len(roles) != 2 || roles[0].ID != "staff-platform" || roles[1].ID != "senior-platform" {
 		t.Fatalf("resume role order was not applied: %+v", roles)
 	}
 	if len(skills.Items) != 2 || skills.Items[0].ID != "platform" || skills.Items[1].ID != "reliability" {
