@@ -17,8 +17,8 @@ func TestStandardContainsPresentationSettingsOnly(t *testing.T) {
 	if standard.Page.Width <= 0 || standard.Page.Height <= 0 || standard.Fonts.Regular == "" {
 		t.Fatalf("missing page or font settings: %+v", standard)
 	}
-	if standard.Header.Align != "center" || standard.Header.Compact == nil || !*standard.Header.Compact {
-		t.Fatalf("expected centered compact header: %+v", standard.Header)
+	if standard.Header.Align != "left" || standard.Header.Compact == nil || !*standard.Header.Compact {
+		t.Fatalf("expected left-aligned compact header: %+v", standard.Header)
 	}
 	if standard.Headings.Rule == nil || !*standard.Headings.Rule || standard.Colors.Heading != "#1F4E79" {
 		t.Fatalf("expected blue ruled headings: %+v", standard.Headings)
