@@ -7,7 +7,7 @@ page:
   height: 279.4
 
 margins:
-  top: 16
+  top: 4
   bottom: 18
   left: 16
   right: 16
@@ -26,7 +26,7 @@ colors:
   background: "#FFFFFF"
 
 sizes:
-  name: 21
+  name: 25
   contact: 8
   heading: 11
   roleTitle: 9.5
@@ -34,10 +34,12 @@ sizes:
   footer: 7.5
 
 spacing:
-  line: 0.35
-  section: 4
-  roleGap: 0.8
-  bulletGap: 0.3
+  line: 0.6
+  section: 6
+  entryGap: 3.5
+  impactGap: 0
+  roleGap: 1.5
+  bulletGap: 0.5
 
 headings:
   uppercase: true

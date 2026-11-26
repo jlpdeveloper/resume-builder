@@ -322,6 +322,8 @@ type SizeConfig struct {
 type SpacingConfig struct {
 	Line      float64 `yaml:"line"`
 	Section   float64 `yaml:"section"`
+	EntryGap  float64 `yaml:"entryGap"`
+	ImpactGap float64 `yaml:"impactGap"`
 	RoleGap   float64 `yaml:"roleGap"`
 	BulletGap float64 `yaml:"bulletGap"`
 }
