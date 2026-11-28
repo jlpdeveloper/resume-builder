@@ -662,7 +662,7 @@ func (r *renderer) experienceBlock(employer resolve.ResolvedEmployer) itemBlock 
 		roleComponent := r.text(roleTitle, r.bold, fontstyle.Bold, r.roleSize, align.Left, r.template.Indent.Role, r.template.Spacing.RoleGap)
 		var scopeComponents []core.Component
 		if strings.TrimSpace(role.Scope) != "" {
-			scopeComponents = append(scopeComponents, r.text(role.Scope, r.regular, fontstyle.Normal, r.bodySize, align.Left, r.template.Indent.Role, r.template.Spacing.BulletGap))
+			scopeComponents = append(scopeComponents, r.textWithColor(role.Scope, r.regular, fontstyle.Normal, r.bodySize, align.Left, r.template.Indent.Role, r.template.Spacing.BulletGap, 1, r.textColor))
 		}
 		if roleIndex == 0 {
 			block.first = append(block.first, roleComponent)
