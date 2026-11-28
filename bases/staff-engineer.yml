@@ -24,6 +24,7 @@ employment:
       - id: staff-platform
         title: Staff Platform Engineer
         start: "2022-01"
+        scope: Led platform engineering, cloud infrastructure, and developer productivity initiatives across multiple product teams.
         accomplishments:
           - Reduced deployment failures by 62% through progressive delivery and automated rollback.
           - Established service ownership and SLO reviews for 14 production teams.
@@ -36,6 +37,7 @@ employment:
         title: Software Engineer
         start: "2016-06"
         end: "2019-03"
+        scope: Built software systems and release automation to make deployments more reliable and repeatable.
         accomplishments:
           - Automated release checks and reduced manual deployment steps from 12 to 4.
 

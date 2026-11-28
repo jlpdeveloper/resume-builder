@@ -99,6 +99,7 @@ type ResolvedRole struct {
 	Title           string
 	Start           string
 	End             string
+	Scope           string
 	Accomplishments []string
 	Source          string // "profile" or "base"
 }
@@ -415,6 +416,7 @@ func resolveExperience(profile *schema.Profile, base *schema.Base, resume *schem
 					Title:           r.Title,
 					Start:           r.Start,
 					End:             r.End,
+					Scope:           r.Scope,
 					Accomplishments: accs,
 					Source:          "profile",
 				})
@@ -571,6 +573,7 @@ func makeResolvedRoles(roles []schema.Role, source string) []ResolvedRole {
 			Title:           r.Title,
 			Start:           r.Start,
 			End:             r.End,
+			Scope:           r.Scope,
 			Accomplishments: r.Accomplishments,
 			Source:          source,
 		})
