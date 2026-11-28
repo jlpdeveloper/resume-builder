@@ -5,6 +5,11 @@
 - Every issue gets its own branch.
 - Branch names should be descriptive, e.g. `issue-5-file-resolution`.
 
+## Commits
+
+- Commit every change made for the issue before ending the run; do not include unrelated pre-existing changes.
+- Report the short hash of each commit in the final response.
+
 ## Code Style
 
 This is Go. Keep it simple. Any engineer should be able to read and understand the code without special knowledge.
