@@ -29,6 +29,7 @@ func makeInspectFixture(t *testing.T) string {
 		"skills:", "  - id: tech", "    name: Programming", "    skills: [Go, SQL]",
 		"employment:", "  - id: acme", "    name: Acme", "    roles:",
 		"      - id: role-1", "        title: Engineer", "        start: '2020-01'",
+		"        scope: Led engineering delivery and production ownership",
 		"        accomplishments: [Improved uptime]",
 		"projects:", "  - id: project-1", "    name: Resume API", "    role: Maintainer", "    start: '2022'",
 		"    link: https://example.com", "    accomplishments: [Built a service]",
@@ -75,7 +76,7 @@ func TestInspect_OrderedSectionsAndSources(t *testing.T) {
 		t.Errorf("unexpected project source: %+v", project.Source)
 	}
 	experience := report.Sections[3].Items[0]
-	if len(experience.Roles) != 1 || experience.Roles[0].Source.File == "" {
+	if len(experience.Roles) != 1 || experience.Roles[0].Source.File == "" || experience.Roles[0].Scope != "Led engineering delivery and production ownership" {
 		t.Errorf("expected role source attribution, got %+v", experience)
 	}
 }
@@ -87,7 +88,7 @@ func TestRun_HumanAndJSONOutput(t *testing.T) {
 	if code := Run([]string{resumePath}, stdout, stderr, false); code != 0 {
 		t.Fatalf("expected human inspect success, got %d: %s", code, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "1. Skills") || !strings.Contains(stdout.String(), "inherited") || !strings.Contains(stdout.String(), "profile.yml") || !strings.Contains(stdout.String(), "Phone: 555-0100") || !strings.Contains(stdout.String(), "date_earned: 2023-01") {
+	if !strings.Contains(stdout.String(), "1. Skills") || !strings.Contains(stdout.String(), "inherited") || !strings.Contains(stdout.String(), "profile.yml") || !strings.Contains(stdout.String(), "Phone: 555-0100") || !strings.Contains(stdout.String(), "date_earned: 2023-01") || !strings.Contains(stdout.String(), "Led engineering delivery and production ownership") {
 		t.Errorf("human output omitted order or provenance: %s", stdout.String())
 	}
 
@@ -101,6 +102,9 @@ func TestRun_HumanAndJSONOutput(t *testing.T) {
 	}
 	if report.Target.Company != "Acme" || report.Header.Name != "Alex Example" {
 		t.Fatalf("unexpected JSON report: %+v", report)
+	}
+	if report.Sections[3].Items[0].Roles[0].Scope != "Led engineering delivery and production ownership" {
+		t.Errorf("JSON report omitted role scope: %+v", report.Sections[3].Items[0].Roles[0])
 	}
 }
 

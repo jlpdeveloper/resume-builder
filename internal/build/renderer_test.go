@@ -395,7 +395,8 @@ func TestRender_TextComponentsDoNotOverlap(t *testing.T) {
 		Experience: []resolve.ResolvedEmployer{{
 			Name: "Acme",
 			Roles: []resolve.ResolvedRole{{
-				Title: "Principal Reliability Engineer", Accomplishments: []string{"Designed reliable systems."},
+				Title: "Principal Reliability Engineer", Scope: "Led engineering delivery and production ownership.",
+				Accomplishments: []string{"Designed reliable systems."},
 			}},
 		}},
 	}
@@ -422,9 +423,10 @@ func TestRender_TextComponentsDoNotOverlap(t *testing.T) {
 	experienceHeading := findTextItem(t, texts, "EXPERIENCE")
 	employer := findTextItem(t, texts, "Acme")
 	role := findTextItem(t, texts, "Principal Reliability Engineer")
+	scope := findTextItem(t, texts, "Led engineering delivery and production ownership.")
 	accomplishment := findTextItem(t, texts, "Designed reliable systems.")
-	if !(experienceHeading.Y > employer.Y && employer.Y > role.Y && role.Y > accomplishment.Y) {
-		t.Errorf("experience entry is not vertically ordered: heading=%+v employer=%+v role=%+v accomplishment=%+v", experienceHeading, employer, role, accomplishment)
+	if !(experienceHeading.Y > employer.Y && employer.Y > role.Y && role.Y > scope.Y && scope.Y > accomplishment.Y) {
+		t.Errorf("experience entry is not vertically ordered: heading=%+v employer=%+v role=%+v scope=%+v accomplishment=%+v", experienceHeading, employer, role, scope, accomplishment)
 	}
 	for _, text := range texts {
 		if strings.Contains(text.S, "GitHub") || strings.Contains(text.S, "LinkedIn") {

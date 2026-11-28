@@ -660,8 +660,13 @@ func (r *renderer) experienceBlock(employer resolve.ResolvedEmployer) itemBlock 
 			roleTitle += "–" + role.End
 		}
 		roleComponent := r.text(roleTitle, r.bold, fontstyle.Bold, r.roleSize, align.Left, r.template.Indent.Role, r.template.Spacing.RoleGap)
+		var scopeComponents []core.Component
+		if strings.TrimSpace(role.Scope) != "" {
+			scopeComponents = append(scopeComponents, r.text(role.Scope, r.regular, fontstyle.Normal, r.bodySize, align.Left, r.template.Indent.Role, r.template.Spacing.BulletGap))
+		}
 		if roleIndex == 0 {
 			block.first = append(block.first, roleComponent)
+			block.first = append(block.first, scopeComponents...)
 			if len(role.Accomplishments) > 0 {
 				bullet := r.bullet(role.Accomplishments[0], r.template.Indent.Accomp)
 				if keepRoleWithAccomplishment {
@@ -672,6 +677,7 @@ func (r *renderer) experienceBlock(employer resolve.ResolvedEmployer) itemBlock 
 			}
 		} else {
 			first := []core.Component{roleComponent}
+			first = append(first, scopeComponents...)
 			if len(role.Accomplishments) > 0 && keepRoleWithAccomplishment {
 				first = append(first, r.bullet(role.Accomplishments[0], r.template.Indent.Accomp))
 			}

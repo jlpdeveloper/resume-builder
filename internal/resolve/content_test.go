@@ -420,6 +420,7 @@ employment:
       - id: r1
         title: Senior Engineer
         start: 2020-01
+        scope: Led engineering delivery and production ownership
         accomplishments:
           - Led team of 5
 `)
@@ -458,6 +459,9 @@ target:
 	if len(resolved.Experience[0].Roles) != 1 {
 		t.Fatalf("expected 1 role, got %d", len(resolved.Experience[0].Roles))
 	}
+	if resolved.Experience[0].Roles[0].Scope != "Led engineering delivery and production ownership" {
+		t.Errorf("unexpected role scope %q", resolved.Experience[0].Roles[0].Scope)
+	}
 }
 
 func TestResolveContent_ExperienceFromResume(t *testing.T) {
@@ -477,6 +481,7 @@ employment:
       - id: r1
         title: Senior Engineer
         start: 2020-01
+        scope: Led platform engineering and production operations
         accomplishments:
           - Led team of 5
           - Reduced latency by 40%
@@ -520,6 +525,9 @@ experience:
 	}
 	if resolved.Experience[0].Roles[0].Title != "Senior Engineer" {
 		t.Errorf("expected 'Senior Engineer', got %q", resolved.Experience[0].Roles[0].Title)
+	}
+	if resolved.Experience[0].Roles[0].Scope != "Led platform engineering and production operations" {
+		t.Errorf("unexpected role scope %q", resolved.Experience[0].Roles[0].Scope)
 	}
 	// Unselected role should not appear.
 	if resolved.Experience[0].Roles[0].ID != "r1" {

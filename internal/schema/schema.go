@@ -109,6 +109,7 @@ type Role struct {
 	Title           string   `yaml:"title"`
 	Start           string   `yaml:"start"`
 	End             string   `yaml:"end,omitempty"`
+	Scope           string   `yaml:"scope,omitempty"`
 	Accomplishments []string `yaml:"accomplishments,omitempty"`
 }
 

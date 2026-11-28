@@ -34,6 +34,7 @@ type Role struct {
 	Title           string   `json:"title"`
 	Start           string   `json:"start"`
 	End             string   `json:"end,omitempty"`
+	Scope           string   `json:"scope,omitempty"`
 	Accomplishments []string `json:"accomplishments,omitempty"`
 	Source          Source   `json:"source"`
 }
@@ -233,6 +234,7 @@ func Inspect(path string) (*Report, error) {
 						Title:           role.Title,
 						Start:           role.Start,
 						End:             role.End,
+						Scope:           role.Scope,
 						Accomplishments: role.Accomplishments,
 						Source:          sourceForResolved(resolved, role.Source, selectedBy),
 					})
@@ -492,6 +494,9 @@ func writeItem(out io.Writer, item Item) {
 			dateRange += "–" + role.End
 		}
 		fmt.Fprintf(out, "    %s (%s) [%s: %s]\n", role.Title, dateRange, role.Source.Kind, role.Source.File)
+		if role.Scope != "" {
+			fmt.Fprintf(out, "      %s\n", role.Scope)
+		}
 		for _, bullet := range role.Accomplishments {
 			fmt.Fprintf(out, "      • %s\n", bullet)
 		}
