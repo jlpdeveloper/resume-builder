@@ -31,13 +31,13 @@ Give every document a stable ID; document IDs must not collide within a dependen
 Keep reusable, candidate-specific facts in `profile.yml`:
 
 - `header`: name, contact details, links, and credentials shown with contact information.
-- `employment`: employers (`id`, `name`, optional location/link) containing roles (`id`, `title`, `start`, optional `end`) and factual `accomplishments`.
+- `employment`: employers (`id`, `name`, optional location/link) containing roles (`id`, `title`, `start`, optional `end`, optional freeform `scope`) and factual `accomplishments`.
 - `skills`: named groups with stable IDs and skill lists.
 - `projects`: named work with optional role, dates, link, technology stack, and accomplishments.
 - `education` and `certifications`: academic and professional credentials, respectively.
 - `summaries`: reusable professional summaries; `impact`: reusable cross-cutting impact statements.
 
-Keep each accomplishment under the role or project where it happened. Use dates as quoted strings, preferably `"YYYY-MM"` (for example, `"2022-01"`), and leave an ongoing role's end date empty rather than guessing.
+Use a role's optional `scope` for a concise, freeform description of its responsibilities or breadth; it is rendered as an unbulleted paragraph above that role's accomplishment bullets. Keep each accomplishment under the role or project where it happened. Use dates as quoted strings, preferably `"YYYY-MM"` (for example, `"2022-01"`), and leave an ongoing role's end date empty rather than guessing.
 
 ### Base: shared defaults
 
